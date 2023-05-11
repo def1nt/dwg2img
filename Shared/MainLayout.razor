@@ -1,0 +1,15 @@
+﻿@inherits LayoutComponentBase
+
+<PageTitle>auth</PageTitle>
+
+<div class="page" @oncontextmenu:preventDefault @oncontextmenu:stopPropagation @oncontextmenu="PreventMenu">
+    <main>
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private void PreventMenu() { }
+}

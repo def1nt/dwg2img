@@ -1,0 +1,79 @@
+@using auth.Data
+
+@inject LoadImageService LoadImageService
+@inject ILogger<ImageViewer> Logger
+@inject IHttpContextAccessor HttpContextAccessor
+
+@if (imageBase64 is not null)
+{
+    <img id="image" src="@($"data:image/png;base64,{imageBase64}")" @onclick="Zoom" style="height: @height; width: @width; cursor: zoom-in;"/>
+}
+else
+{
+    <div class="container">
+        <div class="d-flex justify-content-center align-middle">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+        <div class="d-flex justify-content-center">
+            <p>Идёт загрузка изображения</p>
+        </div>
+    </div>
+}
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    [Parameter]
+    public string width { get; set; } = "100%";
+    [Parameter]
+    public string height { get; set; } = "";
+    enum ZoomState { HorizontalFit, VerticalFit, Original }
+    private ZoomState zoom = ZoomState.HorizontalFit;
+
+    [Parameter]
+    public string art { get; set; } = "0";
+    [Parameter]
+    public string ver { get; set; } = "0";
+    [Parameter]
+    public string username { get; set; } = "NA";
+
+    private string? imageBase64;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState != null)
+        {
+            var authState = await AuthenticationState;
+            var user = authState?.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                username = user.Identity?.Name ?? "";
+            }
+        }
+        if (!int.TryParse(art, out int artInt)) artInt = 0;
+        if (!int.TryParse(ver, out int verInt)) verInt = 0;
+
+        var ip = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress ?? System.Net.IPAddress.None;
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) ip = ip.MapToIPv4();
+
+        imageBase64 = await LoadImageService.LoadImage(artInt, verInt, new string[] { username, ip.ToString(), $"{DateTime.Now.ToShortDateString()} {DateTime.Now.ToShortTimeString()}" });
+        Logger.LogInformation($"Image {art}/{ver} loaded on {DateTime.Now:HH:mm:ss dd.MM.yyyy} by {username} from {ip}");
+        await base.OnInitializedAsync();
+        StateHasChanged();
+    }
+
+    public void Zoom()
+    {
+        switch (zoom)
+        {
+            case ZoomState.HorizontalFit:
+                { zoom = ZoomState.VerticalFit; width = ""; height = "95vh"; break; }
+            case ZoomState.VerticalFit:
+                { zoom = ZoomState.Original; width = ""; height = ""; break; }
+            case ZoomState.Original:
+                { zoom = ZoomState.HorizontalFit; width = "100%"; height = ""; break; }
+        }
+    }
+}

@@ -1,0 +1,56 @@
+﻿@page "/{art?}/{ver?}"
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using auth.Data
+@inject NavigationManager NavigationManager
+@inject WebsiteAuthenticator WebsiteAuthenticator
+
+<PageTitle>DWG2IMG</PageTitle>
+
+<AuthorizeView Context="Account">
+    <NotAuthorized>
+        <Login redirect="@($"{art}/{ver}")"/>
+    </NotAuthorized>
+    <Authorized>
+        @if (art is null)
+        {
+            <div class="alert alert-danger" role="alert">
+                Не указан артикул!
+            </div>
+        } else {
+            <ImageViewer art="@art" ver="@ver" />
+        }
+        <p><a href="/" @onclick="Logout" class="fs-6 text-muted"><small>Выйти</small></a></p>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    [Parameter]
+    public string? art { get; set; } = "0";
+    [Parameter]
+    public string? ver { get; set; } = "0";
+
+    private string username = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationState != null)
+        {
+            var authState = await AuthenticationState;
+            var user = authState?.User;
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                username = user.Identity?.Name ?? "";
+            }
+        }
+    }
+
+    private async void Logout()
+    {
+        await WebsiteAuthenticator.LogoutAsync();
+        NavigationManager.NavigateTo("/", true, true);
+    }
+}
