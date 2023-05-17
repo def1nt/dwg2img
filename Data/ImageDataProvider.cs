@@ -38,21 +38,28 @@ class ImageDataProvider
             {
                 TimeOnly start = TimeOnly.FromDateTime(DateTime.Now);
                 bytes = GetFile(art, ver);
-                bytes = Convert(bytes);
-
-                var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes)));
-                RemoveWatermark(ref bitmap);
-                CropWhiteSpace(ref bitmap);
-
-                using (var ms = new MemoryStream())
+                if (bytes.Length != 0)
                 {
-                    bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                    bytes = ms.ToArray();
-                }
+                    bytes = Convert(bytes);
 
-                _cache.SaveToCache(bytes, (art, ver));
-                TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
-                System.Console.WriteLine(finish - start);
+                    var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes)));
+                    RemoveWatermark(ref bitmap);
+                    CropWhiteSpace(ref bitmap);
+
+                    using (var ms = new MemoryStream())
+                    {
+                        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        bytes = ms.ToArray();
+                    }
+
+                    _cache.SaveToCache(bytes, (art, ver));
+                    TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
+                    System.Console.WriteLine(finish - start);
+                }
+                else // TODO: Log this outcome somehow differently??
+                {
+                    bytes = _cache.GetFromCache(0, 0);
+                }
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
