@@ -203,90 +203,81 @@ class ImageDataProvider
 
     private Rectangle FindBorder(in Bitmap bitmap)
     {
-        const int White = -1; // Color.White.ToArgb()
-        (int x, int y) dir = (1, 0);
-        (int x, int y) pos = (0, 0);
-        (int left, int top, int right, int bottom) rect = (0, 0, bitmap.Width - 1, bitmap.Height - 1); // Boldly assuming that the image is of correct size, always
+        int x = 0, y = 0, width = bitmap.Width, height = bitmap.Height;
         (bool left, bool top, bool right, bool bottom) skip = (false, false, false, false);
 
-        int nonWhitePixels = 0;
-        int maximumSteps = bitmap.Height * bitmap.Width;
-        int i = 0;
-        for (i = 0; i < maximumSteps; i++) // Spiraling clock-wise
+        while (x < width && y < height)
         {
-            if (bitmap.GetPixel(pos.x, pos.y).ToArgb() != White) nonWhitePixels += 1;
-
-            if (dir == (1, 0) && pos.x == rect.right) // Hit Right
+            if (!skip.top)
             {
-                if (nonWhitePixels <= 2 && !skip.top)
+                skip.top = !IsLineEmpty(in bitmap, y, x, width, false);
+                if (!skip.top)
                 {
-                    rect.top += 1;
+                    y++;
                 }
-                else skip.top = true;
-
-                if (skip.right)
-                {
-                    pos.y = rect.bottom;
-                }
-
-                nonWhitePixels = 0;
-                dir = (0, 1);
-            }
-            if (dir == (0, 1) && pos.y == rect.bottom) // Hit Bottom
-            {
-                if (nonWhitePixels <= 2 && !skip.right)
-                {
-                    rect.right -= 1;
-                }
-                else skip.right = true;
-
-                if (skip.bottom)
-                {
-                    pos.x = rect.left;
-                }
-
-                nonWhitePixels = 0;
-                dir = (-1, 0);
-            }
-            if (dir == (-1, 0) && pos.x == rect.left) // Hit Left
-            {
-                if (nonWhitePixels <= 2 && !skip.bottom)
-                {
-                    rect.bottom -= 1;
-                }
-                else skip.bottom = true;
-
-                if (skip.left)
-                {
-                    pos.y = rect.top;
-                }
-
-                nonWhitePixels = 0;
-                dir = (0, -1);
-            }
-            if (dir == (0, -1) && pos.y == rect.top) // Hit Top
-            {
-                if (nonWhitePixels <= 2 && !skip.left)
-                {
-                    rect.left += 1;
-                }
-                else skip.left = true;
-
-                if (skip.top)
-                {
-                    pos.x = rect.right;
-                    pos.x -= 1; // Crutch, but works! If we skipping to right, we have to wait for the next iteration to validate current pos, THEN proceed.
-                }
-
-                nonWhitePixels = 0;
-                dir = (1, 0);
             }
 
-            if (skip.left && skip.right && skip.top && skip.bottom) break;
+            if (!skip.right)
+            {
+                skip.right = !IsLineEmpty(in bitmap, width - 1, y, height, true);
+                if (!skip.right)
+                {
+                    width--;
+                }
+            }
 
-            pos.x += dir.x;
-            pos.y += dir.y;
+            if (!skip.bottom)
+            {
+                skip.bottom = !IsLineEmpty(in bitmap, height - 1, x, width, false);
+                if (!skip.bottom)
+                {
+                    height--;
+                }
+            }
+
+            if (!skip.left)
+            {
+                skip.left = !IsLineEmpty(in bitmap, x, y, height, true);
+                if (!skip.left)
+                {
+                    x++;
+                }
+            }
+
+            if (skip.left && skip.top && skip.right && skip.bottom)
+            {
+                break;
+            }
         }
-        return new Rectangle(rect.left, rect.top, rect.right + 1 - rect.left, rect.bottom + 1 - rect.top);
+        return new Rectangle(x, y, width - x, height - y);
     }
+
+    public bool IsLineEmpty(in Bitmap bitmap, int point, int low, int high, bool vertical)
+    {
+        const int White = -1; // Color.White.ToArgb()
+        int nonWhitePixels = 0;
+        for (int i = low; i < high; i++)
+        {
+            if (vertical)
+            {
+                if (bitmap.GetPixel(point, i).ToArgb() != White)
+                {
+                    nonWhitePixels++;
+                }
+            }
+            else
+            {
+                if (bitmap.GetPixel(i, point).ToArgb() != White)
+                {
+                    nonWhitePixels++;
+                }
+            }
+            if (nonWhitePixels > 2)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
 }
