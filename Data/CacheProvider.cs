@@ -1,12 +1,12 @@
 namespace auth.Providers;
 
-class CacheProvider
+public sealed class CacheProvider
 {
-    string cache = Path.Join(AppContext.BaseDirectory, "cache") + Path.DirectorySeparatorChar;
+    private string cache = Path.Join(AppContext.BaseDirectory, "cache") + Path.DirectorySeparatorChar;
 
     public CacheProvider()
     {
-        CreateCache();
+        InitCache();
     }
 
     public bool CheckCache(int art, int ver)
@@ -40,7 +40,7 @@ class CacheProvider
         return Directory.Exists(cache);
     }
 
-    public void CreateCache()
+    public void InitCache()
     {
         if (!DoesCacheExist()) Directory.CreateDirectory(cache);
     }
