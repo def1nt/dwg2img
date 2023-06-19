@@ -5,7 +5,7 @@ namespace auth.Data;
 
 public class LoadImageService
 {
-    ImageDataProvider _provider = new ImageDataProvider();
+    private readonly ImageDataProvider _provider = new();
 
     public byte[] GetBytes(int art, int ver)
     {
@@ -48,11 +48,9 @@ public class LoadImageService
                     c++;
                 }
             }
-            using (var ms = new MemoryStream())
-            {
-                img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                return ms.ToArray();
-            }
+            using MemoryStream ms = new();
+            img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+            return ms.ToArray();
         }
     }
 

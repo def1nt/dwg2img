@@ -11,12 +11,12 @@ public class ADUserInfoService
 
     public List<ADUser> GetUsers()
     {
-        List<ADUser> users = new List<ADUser>() { };
+        List<ADUser> users = new() { };
         if (!OperatingSystem.IsWindows()) return users;
 
         var domain = System.DirectoryServices.ActiveDirectory.Domain.GetCurrentDomain();
-        using (DirectoryEntry searchRoot = new DirectoryEntry(@$"LDAP://{domain.Name}"))
-        using (DirectorySearcher directorySearcher = new DirectorySearcher(searchRoot))
+        using (DirectoryEntry searchRoot = new(@$"LDAP://{domain.Name}"))
+        using (DirectorySearcher directorySearcher = new(searchRoot))
         {
             // Set the filter
             directorySearcher.Filter = "(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
@@ -43,7 +43,7 @@ public class ADUserInfoService
 
                     // Set MemberOf if available
                     if (searchResult.Properties[MemberOfProperty].Count > 0)
-                        user.MemberOf = searchResult.Properties[MemberOfProperty][0]?.ToString()?.Split(',') ?? new string[] { };
+                        user.MemberOf = searchResult.Properties[MemberOfProperty][0]?.ToString()?.Split(',') ?? Array.Empty<string>();
 
                     // Add user to users list.
                     users.Add(user);
@@ -61,5 +61,5 @@ public struct ADUser
     public string CN { get; set; }
     public string SamAcountName { get; set; }
     public string[] MemberOf { get; set; }
-    public ADUser() { CN = ""; SamAcountName = ""; MemberOf = new string[] { }; }
+    public ADUser() { CN = ""; SamAcountName = ""; MemberOf = Array.Empty<string>(); }
 }

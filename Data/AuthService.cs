@@ -7,7 +7,7 @@ namespace auth.Data;
 
 public class WebsiteAuthenticator : AuthenticationStateProvider
 {
-    private string DomainName = System.DirectoryServices.ActiveDirectory.Domain.GetCurrentDomain().Name;
+    private readonly string DomainName = System.DirectoryServices.ActiveDirectory.Domain.GetCurrentDomain().Name;
 
     private readonly ProtectedLocalStorage _protectedLocalStorage;
     private readonly ILogger<WebsiteAuthenticator> _logger;
@@ -55,11 +55,11 @@ public class WebsiteAuthenticator : AuthenticationStateProvider
             var identity = CreateIdentityFromUser(userInDatabase!);
             principal = new ClaimsPrincipal(identity);
             await _protectedLocalStorage.SetAsync("identity", JsonSerializer.Serialize(userInDatabase));
-            _logger.LogInformation($"Login attempt for '{Username}' was successful");
+            _logger.LogInformation("Login attempt for '{Username}' was successful", Username);
         }
         else
         {
-            _logger.LogWarning($"Login attempt for '{Username}' was unsuccessful");
+            _logger.LogWarning("Login attempt for '{Username}' was unsuccessful", Username);
         }
 
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
@@ -98,9 +98,9 @@ public class WebsiteAuthenticator : AuthenticationStateProvider
             {
                 return (new User { Username = username, Password = password }, true);
             }
-            else _logger.LogWarning($"Invalid credentials for '{username}'");
+            else _logger.LogWarning("Invalid credentials for '{username}'", username);
         }
-        else _logger.LogWarning($"User '{username}' not found");
+        else _logger.LogWarning("User '{username}' not found", username);
 
         return (null, false);
     }

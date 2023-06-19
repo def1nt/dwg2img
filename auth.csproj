@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
-    <NoWarn>CA1416</NoWarn>
+    <NoWarn>CA1416,CA1822,IDE0063</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -7,7 +7,7 @@ namespace auth.Providers;
 
 class ImageDataProvider
 {
-    private CacheProvider _cache = new CacheProvider();
+    private readonly CacheProvider _cache = new();
 
     private const string Server = "srv-search";
     private const string DBName = "search";
@@ -15,7 +15,7 @@ class ImageDataProvider
     private const string Password = "search";
     private const string ConnectionString = "Server={0}; Initial Catalog={1}; encrypt=false; trustServerCertificate=false; User ID={2}; Password={3}";
 
-    private static SqlConnection Connection = new SqlConnection(string.Format(ConnectionString, Server, DBName, UserID, Password));
+    private static readonly SqlConnection Connection = new(string.Format(ConnectionString, Server, DBName, UserID, Password));
 
     ~ImageDataProvider()
     {
@@ -24,7 +24,7 @@ class ImageDataProvider
 
     public byte[] GetImage(int art, int ver)
     {
-        byte[] bytes = new byte[] { };
+        byte[] bytes;
 
         bool cached = _cache.CheckCache(art, ver);
         // bool cached = false; // Testing pre-processing
@@ -54,7 +54,7 @@ class ImageDataProvider
 
                     _cache.SaveToCache(bytes, (art, ver));
                     TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
-                    System.Console.WriteLine(finish - start);
+                    Console.WriteLine(finish - start);
                 }
                 else // TODO: Log this outcome somehow differently??
                 {
@@ -63,12 +63,12 @@ class ImageDataProvider
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
-                System.Console.WriteLine($"{art}/{ver}: {e.Message}");
+                Console.WriteLine($"{art}/{ver}: {e.Message}");
                 bytes = _cache.GetFromCache(-1, 0);
             }
             catch (Exception e)
             {
-                System.Console.WriteLine($"{art}/{ver}: {e.Message}");
+                Console.WriteLine($"{art}/{ver}: {e.Message}");
                 bytes = _cache.GetFromCache(-2, 0);
             }
         }
@@ -80,8 +80,6 @@ class ImageDataProvider
 
     public byte[] GetFile(int art, int ver)
     {
-        byte[] rawfile = new byte[] { };
-
         string query = """
                         declare @artid int,@docverid int,@vartid int
                         set @artid={0}
@@ -117,7 +115,8 @@ class ImageDataProvider
         if (Connection.State != System.Data.ConnectionState.Open) Connection.Open();
 
         SqlCommand cmd = new SqlCommand(query, Connection);
-        byte[] file = new byte[] { };
+        byte[] rawfile;
+        byte[] file = Array.Empty<byte>();
         using (SqlDataReader reader = cmd.ExecuteReader())
         {
             if (reader.Read())
@@ -125,7 +124,7 @@ class ImageDataProvider
                 rawfile = (byte[])reader.GetValue(0);
 
                 try { Decompress(rawfile, out file); }
-                catch (Exception e) { System.Console.WriteLine(e.Message); return new byte[] { }; }
+                catch (Exception e) { System.Console.WriteLine(e.Message); return Array.Empty<byte>(); }
             }
         }
         return file;
@@ -133,17 +132,15 @@ class ImageDataProvider
 
     private static void Decompress(byte[] inData, out byte[] outData)
     {
-        using (MemoryStream outMemoryStream = new MemoryStream())
-        using (ZOutputStream outZStream = new ZOutputStream(outMemoryStream))
-        using (Stream inMemoryStream = new MemoryStream(inData))
-        {
-            CopyStream(inMemoryStream, outZStream);
-            outZStream.finish();
-            outData = outMemoryStream.ToArray();
-        }
+        using MemoryStream outMemoryStream = new();
+        using ZOutputStream outZStream = new(outMemoryStream);
+        using Stream inMemoryStream = new MemoryStream(inData);
+        CopyStream(inMemoryStream, outZStream);
+        outZStream.finish();
+        outData = outMemoryStream.ToArray();
     }
 
-    private static void CopyStream(System.IO.Stream input, System.IO.Stream output)
+    private static void CopyStream(Stream input, Stream output)
     {
         byte[] buffer = new byte[2000];
         int len;
@@ -156,19 +153,23 @@ class ImageDataProvider
 
     public byte[] Convert(byte[] dwg)
     {
-        MemoryStream output = new MemoryStream();
+        MemoryStream output = new();
         using (var source = new MemoryStream(dwg, false))
         using (var image = Aspose.CAD.Image.Load(source))
         {
             // Create an instance of CadRasterizationOptions and set its various properties
-            Aspose.CAD.ImageOptions.CadRasterizationOptions rasterizationOptions = new Aspose.CAD.ImageOptions.CadRasterizationOptions();
-            rasterizationOptions.BackgroundColor = Aspose.CAD.Color.White;
-            rasterizationOptions.DrawType = Aspose.CAD.FileFormats.Cad.CadDrawTypeMode.UseObjectColor;
-            rasterizationOptions.PageWidth = 4800;
-            rasterizationOptions.PageHeight = 4800;
+            CadRasterizationOptions rasterizationOptions = new()
+            {
+                BackgroundColor = Aspose.CAD.Color.White,
+                DrawType = Aspose.CAD.FileFormats.Cad.CadDrawTypeMode.UseObjectColor,
+                PageWidth = 4800,
+                PageHeight = 4800
+            };
 
-            var options = new Aspose.CAD.ImageOptions.PngOptions();
-            options.VectorRasterizationOptions = rasterizationOptions;
+            var options = new PngOptions
+            {
+                VectorRasterizationOptions = rasterizationOptions
+            };
 
             image.Save(output, options);
         }

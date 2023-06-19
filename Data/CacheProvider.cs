@@ -2,7 +2,7 @@ namespace auth.Providers;
 
 public sealed class CacheProvider
 {
-    private string cache = Path.Join(AppContext.BaseDirectory, "cache") + Path.DirectorySeparatorChar;
+    private readonly string cache = Path.Join(AppContext.BaseDirectory, "cache") + Path.DirectorySeparatorChar;
 
     public CacheProvider()
     {
@@ -11,13 +11,13 @@ public sealed class CacheProvider
 
     public bool CheckCache(int art, int ver)
     {
-        return (File.Exists($"{cache}{art}-{ver}.png"));
+        return File.Exists($"{cache}{art}-{ver}.png");
     }
 
     public byte[] GetFromCache(int art, int ver) => GetFromCache((art, ver));
     public byte[] GetFromCache((int art, int ver) par)
     {
-        using (var fi = new System.IO.FileStream($"{cache}{par.art}-{par.ver}.png", FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var fi = new FileStream($"{cache}{par.art}-{par.ver}.png", FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
         {
             byte[] t = new byte[1000];
             var m = new MemoryStream(0);
@@ -29,10 +29,8 @@ public sealed class CacheProvider
 
     public void SaveToCache(byte[] data, (int art, int ver) par)
     {
-        using (var fo = new System.IO.FileStream($"{cache}{par.art}-{par.ver}.png", FileMode.Create, FileAccess.Write))
-        {
-            fo.Write(data, 0, data.Count());
-        }
+        using var fo = new FileStream($"{cache}{par.art}-{par.ver}.png", FileMode.Create, FileAccess.Write);
+        fo.Write(data, 0, data.Length);
     }
 
     private bool DoesCacheExist()
