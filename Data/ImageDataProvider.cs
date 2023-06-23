@@ -11,8 +11,8 @@ class ImageDataProvider
 
     private const string Server = "srv-search";
     private const string DBName = "search";
-    private const string UserID = "guest";
-    private const string Password = "search";
+    private const string UserID = "searchtopdf";
+    private const string Password = " SQLsearch231";
     private const string ConnectionString = "Server={0}; Initial Catalog={1}; encrypt=false; trustServerCertificate=false; User ID={2}; Password={3}";
 
     private static readonly SqlConnection Connection = new(string.Format(ConnectionString, Server, DBName, UserID, Password));
