@@ -48,7 +48,7 @@
         }
     }
 
-    private async void Logout()
+    private async Task Logout()
     {
         await WebsiteAuthenticator.LogoutAsync();
         NavigationManager.NavigateTo("/", true, true);
