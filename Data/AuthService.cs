@@ -55,12 +55,12 @@ public class WebsiteAuthenticator : AuthenticationStateProvider
             var identity = CreateIdentityFromUser(userInDatabase!);
             principal = new ClaimsPrincipal(identity);
             await _protectedLocalStorage.SetAsync("identity", JsonSerializer.Serialize(userInDatabase));
-            _logger.LogInformation("Login attempt for '{Username}' was successful", Username);
+            // _logger.LogInformation("Login attempt for '{Username}' was successful", Username);
         }
-        else
-        {
-            _logger.LogWarning("Login attempt for '{Username}' was unsuccessful", Username);
-        }
+        // else
+        // {
+        //     _logger.LogWarning("Login attempt for '{Username}' was unsuccessful", Username);
+        // }
 
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
         return isSuccess;

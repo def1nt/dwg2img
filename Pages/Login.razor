@@ -5,6 +5,8 @@
 @inject NavigationManager NavigationManager
 @inject WebsiteAuthenticator Authenticator
 @inject ADUserInfoService ADUserInfoService
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ILogger<Login> Logger
 
 <form @onsubmit="login">
     <div class="container border p-3">
@@ -13,7 +15,7 @@
                 <b>Для просмотра укажите своё имя и пароль</b>
                 <div class="row my-3">
                     <div class="col-md">
-                        <input @bind="username" @bind:event="oninput" class="form-control @UserNameIsCorrect()"  placeholder="Имя пользователя" />
+                        <input @bind="username" @bind:event="oninput" class="form-control @UserNameIsCorrect()" placeholder="Имя пользователя" />
                     </div>
                 </div>
                 <div class="row my-3">
@@ -77,10 +79,14 @@
     private async Task login()
     {
         bool result = await Authenticator.LoginAsync(username, password);
+        var ip = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress ?? System.Net.IPAddress.None;
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) ip = ip.MapToIPv4();
         if (!result) {
+            Logger.LogWarning("Login failed for {username} from {ip}", username, ip);
             message = "Неверный логин или пароль";
             return;
         }
+        Logger.LogInformation("Login success for {username} from {ip}", username, ip);
         NavigationManager.NavigateTo(redirect, true, true);
         StateHasChanged();
     }
