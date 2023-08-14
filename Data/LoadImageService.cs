@@ -1,7 +1,7 @@
 using System.Drawing;
-using auth.Providers;
+using dwg2img.Providers;
 
-namespace auth.Data;
+namespace dwg2img.Data;
 
 public class LoadImageService
 {

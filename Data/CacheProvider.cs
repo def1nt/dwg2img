@@ -1,4 +1,4 @@
-namespace auth.Providers;
+namespace dwg2img.Providers;
 
 public sealed class CacheProvider
 {

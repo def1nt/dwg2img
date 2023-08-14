@@ -3,7 +3,7 @@ using System.DirectoryServices.AccountManagement;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.Text.Json;
-namespace auth.Data;
+namespace dwg2img.Data;
 
 public class WebsiteAuthenticator : AuthenticationStateProvider
 {

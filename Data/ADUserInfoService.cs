@@ -1,6 +1,6 @@
 using System.DirectoryServices;
 
-namespace auth.Data;
+namespace dwg2img.Data;
 
 public class ADUserInfoService
 {

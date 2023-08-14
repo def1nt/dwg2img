@@ -3,7 +3,7 @@ using System.Drawing;
 using zlib;
 using Aspose.CAD.ImageOptions;
 
-namespace auth.Providers;
+namespace dwg2img.Providers;
 
 class ImageDataProvider
 {
