@@ -11,9 +11,9 @@
 
   <ItemGroup>
     <PackageReference Include="System.DirectoryServices" Version="7.0.1" />
-    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="7.0.0" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="7.0.1" />
     <PackageReference Include="Aspose.CAD" Version="22.6.0" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />
     <PackageReference Include="zlib.net" Version="1.0.4" NoWarn="NU1701" />
   </ItemGroup>
 
