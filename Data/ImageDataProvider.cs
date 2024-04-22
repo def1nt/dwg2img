@@ -106,7 +106,7 @@ class ImageDataProvider
                         select d4.FILEBODY from v_articles a
                         join rc r on a.DOC_ID=r.DOC_ID and a.DOC_VER_ID=r.VERSION_ID
                         join DOCUMS4 d4 on r.FILENAME=d4.FLNAME
-                        where a.ART_ID=@artid and a.DOC_VER_ID =@docverid
+                        where a.ART_ID=@artid and a.DOC_VER_ID =@docverid and d4.VERSION_ID = @docverid and a.DOC_ID=d4.FILE_ID
                         end
                         """;
 
@@ -117,7 +117,7 @@ class ImageDataProvider
         SqlCommand cmd = new SqlCommand(query, Connection);
         byte[] rawfile;
         byte[] file = Array.Empty<byte>();
-        using (SqlDataReader reader = cmd.ExecuteReader())
+        using (SqlDataReader reader = cmd.ExecuteReader(System.Data.CommandBehavior.CloseConnection))
         {
             if (reader.Read())
             {
