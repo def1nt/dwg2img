@@ -18,6 +18,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddLogging();
 
 builder.Logging.ClearProviders();
+builder.Logging.AddEventLog();
 builder.Logging.AddConsole();
 builder.Logging.AddDebug();
 
