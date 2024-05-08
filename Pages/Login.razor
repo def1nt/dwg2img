@@ -115,5 +115,5 @@
         StateHasChanged();
     }
 
-    private string UserNameIsCorrect() => allUsers.Any(u => u.SamAcountName.ToLower() == username.ToLower()) ? "bg-success text-white bg-opacity-75" : "text-danger";
+    private string UserNameIsCorrect() => allUsers.Any(u => u.SamAcountName == username) ? "bg-success text-white bg-opacity-75" : "text-danger"; // PrincipalContext.ValidateCredentials is case-sensitive, so shoud be this
 }
