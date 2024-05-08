@@ -54,7 +54,7 @@ class ImageDataProvider
 
                     _cache.SaveToCache(bytes, (art, ver));
                     TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
-                    Console.WriteLine(finish - start);
+                    // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
                 }
                 else // TODO: Log this outcome somehow differently??
                 {
