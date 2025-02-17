@@ -43,7 +43,15 @@ public class ADUserInfoService
 
                     // Set MemberOf if available
                     if (searchResult.Properties[MemberOfProperty].Count > 0)
-                        user.MemberOf = searchResult.Properties[MemberOfProperty][0]?.ToString()?.Split(',') ?? Array.Empty<string>();
+                    {
+                        var groups = searchResult.Properties[MemberOfProperty];
+                        List<string> groupsList = new();
+                        foreach (var group in groups)
+                        {
+                            groupsList.Add(group.ToString()?.Split(',').ElementAtOrDefault(0) ?? "Unknown");
+                        }
+                        user.MemberOf = groupsList.ToArray();
+                    }
 
                     // Add user to users list.
                     users.Add(user);
