@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace dwg2img;
 
-partial class Application
+static partial class Application
 {
     public static void ParseArgs()
     {

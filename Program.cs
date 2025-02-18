@@ -1,48 +1,57 @@
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Authorization;
 using dwg2img.Data;
-using dwg2img;
 
-if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Usage of System.Drawing and System.DirectoryServices requires application to be run on Windows");
+namespace dwg2img;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor();
-builder.Services.AddScoped<ADUserInfoService>();
-builder.Services.AddScoped<LoadImageService>();
-builder.Services.AddScoped<WebsiteAuthenticator>();
-builder.Services.AddScoped<AuthenticationStateProvider, WebsiteAuthenticator>();
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddLogging();
-
-builder.Logging.ClearProviders();
-builder.Logging.AddEventLog();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+static partial class Application
 {
-    app.Urls.Add("http://*:5262");
+    public async static Task Start(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Usage of System.Drawing and System.DirectoryServices requires application to be run on Windows");
+
+        Application.ParseArgs();
+
+        var builder = WebApplication.CreateBuilder();
+
+        // Add services to the container.
+        builder.Services.AddRazorPages();
+        builder.Services.AddServerSideBlazor();
+        builder.Services.AddScoped<ADUserInfoService>();
+        builder.Services.AddScoped<LoadImageService>();
+        builder.Services.AddScoped<WebsiteAuthenticator>();
+        builder.Services.AddScoped<AuthenticationStateProvider, WebsiteAuthenticator>();
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.AddLogging();
+
+        builder.Logging.ClearProviders();
+        builder.Logging.AddEventLog(new Microsoft.Extensions.Logging.EventLog.EventLogSettings
+        {
+            SourceName = "dwg2img",
+            LogName = "Application"
+        });
+        builder.Logging.AddConsole();
+        builder.Logging.AddDebug();
+
+        var app = builder.Build();
+
+        // Configure the HTTP request pipeline.
+        if (app.Environment.IsDevelopment())
+        {
+            app.Urls.Add("http://*:5262");
+        }
+        else
+        {
+            app.UseExceptionHandler("/Error");
+            app.Urls.Add("http://*:80");
+        }
+
+        app.UseStaticFiles();
+
+        app.UseRouting();
+
+        app.MapBlazorHub();
+        app.MapFallbackToPage("/_Host");
+
+        await app.RunAsync(cancellationToken);
+    }
 }
-else
-{
-    app.UseExceptionHandler("/Error");
-    app.Urls.Add("http://*:80");
-}
-
-app.UseStaticFiles();
-
-app.UseRouting();
-
-app.MapBlazorHub();
-app.MapFallbackToPage("/_Host");
-
-Application.ParseArgs();
-
-app.Run();
