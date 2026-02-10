@@ -1,119 +1,64 @@
 @page "/login"
 
-@using dwg2img.Data
-@using Microsoft.AspNetCore.Components.Authorization
-@inject NavigationManager NavigationManager
-@inject WebsiteAuthenticator Authenticator
-@inject ADUserInfoService ADUserInfoService
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.OpenIdConnect
+@using System.Security.Claims
 @inject IHttpContextAccessor HttpContextAccessor
-@inject ILogger<Login> Logger
+@inject NavigationManager Navigation
 
-<form @onsubmit="login">
+<page>
     <div class="container border p-3">
-        <AuthorizeView Context="Account">
-            <NotAuthorized>
-                <b>Для просмотра укажите своё имя и пароль</b>
-                <div class="row my-3">
-                    <div class="col-md">
-                        <input @bind="username" @bind:event="oninput" class="form-control @UserNameIsCorrect()" placeholder="Имя пользователя" />
-                    </div>
+        <h3>Вход</h3>
+
+        @if (isAuthenticated)
+        {
+            <div class="row">
+                <div class="col-md-12">
+                    <p><b>Здравствуйте, @userName!</b></p>
+                    <button class="btn btn-primary" @onclick="Logout">Выход</button>
                 </div>
-                <div class="row my-3">
-                    <div class="col-md">
-                        <input type="password" @bind="password" @bind:event="oninput" class="form-control" placeholder="Пароль" />
-                    </div>
+            </div>
+        }
+        else
+        {
+            <div class="row">
+                <div class="col-md-12">
+                    <p>Вы можете войти в систему, используя кнопку ниже.</p>
+                    <button class="btn btn-primary" @onclick="LoginWithKeycloak">Вход</button>
                 </div>
-                <div class="row my-3 align-items-center">
-                    <div class="col-auto">
-                        <input type="submit" class="btn btn-primary" value="Вход">
-                        <a href="help" class="btn btn-info" value="Register">Помощь</a>
-                    </div>
-                    <div class="col-md">
-                        <p class="text-danger m-0"><b>@message</b></p>
-                    </div>
-                </div>
-                <p></p>
-                @if (username != "")
-                {
-                    foreach (var user in allUsers.Where(
-                        u => u.SamAcountName.ToLower().Contains(username.ToLower()) || u.CN.ToLower().Contains(username.ToLower())).OrderBy(u => u.CN).Take(10))
-                    {
-                        <p class="list my-0 py-2" @onclick="()=>UserClicked(user.SamAcountName)">@user.CN</p>
-                    }
-                }
-                <style>
-                    .list:hover {
-                        background-color: lightgray;
-                        cursor: pointer;
-                    }
-                </style>
-            </NotAuthorized>
-            <Authorized>
-                <b>Здравствуйте, @name</b>
-                <div class="row">
-                    <div class="col-md">
-                        <input type="button" class="btn btn-primary" value="Выход" @onclick="logout">
-                    </div>
-                </div>
-            </Authorized>
-        </AuthorizeView>
+            </div>
+        }
     </div>
-</form>
+</page>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState>? AuthenticationState { get; set; }
-
     [Parameter]
-    public string username { get; set; } = "";
-    [Parameter]
-    public string password { get; set; } = "";
-    [Parameter]
-    public string redirect { get; set; } = "/login";
+    public string? redirect { get; set; }
 
-    private string? name;
-    private string message = "";
-
-    List<ADUser> allUsers = new List<ADUser>();
-
-    private async Task login()
-    {
-        bool result = await Authenticator.LoginAsync(username, password);
-        var ip = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress ?? System.Net.IPAddress.None;
-        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6) ip = ip.MapToIPv4();
-        if (!result) {
-            Logger.LogWarning("Login failed for {username} from {ip}", username, ip);
-            message = "Неверный логин или пароль";
-            return;
-        }
-        Logger.LogInformation("Login success for {username} from {ip}", username, ip);
-        NavigationManager.NavigateTo(redirect, true, true);
-        StateHasChanged();
-    }
-
-    private async Task logout()
-    {
-        await Authenticator.LogoutAsync();
-        NavigationManager.NavigateTo(redirect, true, true);
-        StateHasChanged();
-    }
+    private bool isAuthenticated;
+    private string userName = "";
 
     protected override async Task OnInitializedAsync()
     {
-        var account = await Authenticator.GetAccountAsync();
-        allUsers = ADUserInfoService.GetUsers();
-        if (account != null)
+        // Check if user is authenticated
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated == true)
         {
-            name = account;
+            isAuthenticated = true;
+            // Try to get the name from Identity.Name first, then from claims
+            userName = httpContext.User.Identity.Name ?? httpContext.User.FindFirst(ClaimTypes.Name)?.Value ?? httpContext.User.FindFirst("name")?.Value ?? "Unknown";
         }
-        StateHasChanged();
     }
 
-    private void UserClicked(string username)
+    private async Task LoginWithKeycloak()
     {
-        this.username = username;
-        StateHasChanged();
+        if (redirect == "/") redirect = null;
+        var redirectUrl = string.IsNullOrEmpty(redirect) ? "/" : $"/{redirect}";
+        Navigation.NavigateTo($"/Auth/login?redirectUri={Uri.EscapeDataString(redirectUrl)}", true);
     }
 
-    private string UserNameIsCorrect() => allUsers.Any(u => u.SamAcountName == username) ? "bg-success text-white bg-opacity-75" : "text-danger"; // PrincipalContext.ValidateCredentials is case-sensitive, so shoud be this
+    private async Task Logout()
+    {
+        Navigation.NavigateTo("/Auth/logout", true);
+    }
 }

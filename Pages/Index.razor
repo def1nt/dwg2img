@@ -2,8 +2,9 @@
 
 @using Microsoft.AspNetCore.Components.Authorization
 @using dwg2img.Data
+@using System.Security.Claims
 @inject NavigationManager NavigationManager
-@inject WebsiteAuthenticator WebsiteAuthenticator
+@inject IHttpContextAccessor HttpContextAccessor
 
 <PageTitle>DWG2IMG</PageTitle>
 
@@ -43,14 +44,14 @@
             var user = authState?.User;
             if (user?.Identity?.IsAuthenticated == true)
             {
-                username = user.Identity?.Name ?? "";
+                // Try to get the name from Identity.Name first, then from claims
+                username = user.Identity?.Name ?? user.FindFirst(ClaimTypes.Name)?.Value ?? user.FindFirst("preferred_username")?.Value ?? "Unknown";
             }
         }
     }
 
     private async Task Logout()
     {
-        await WebsiteAuthenticator.LogoutAsync();
-        NavigationManager.NavigateTo("/", true, true);
+        NavigationManager.NavigateTo("/Auth/logout", true);
     }
 }
