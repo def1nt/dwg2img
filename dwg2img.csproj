@@ -10,8 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Remove these LDAP packages -->
     <PackageReference Include="System.DirectoryServices" Version="9.0.2" />
     <PackageReference Include="System.DirectoryServices.AccountManagement" Version="9.0.2" />
+
+    <!-- Add OpenID Connect package -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="9.0.2" />
+
     <PackageReference Include="Aspose.CAD" Version="22.6.0" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
     <PackageReference Include="zlib.net" Version="1.0.4" NoWarn="NU1701" />
