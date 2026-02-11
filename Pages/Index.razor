@@ -13,14 +13,26 @@
         <Login redirect="@($"{art}/{ver}")"/>
     </NotAuthorized>
     <Authorized>
-        @if (art is null)
-        {
-            <div class="alert alert-danger" role="alert">
-                Не указан артикул!
-            </div>
-        } else {
-            <ImageViewer art="@art" ver="@ver" />
-        }
+        <AuthorizeView Policy="SearchQR">
+            <NotAuthorized Context="access">
+                <p>
+                    <h3>@username, доступ запрещен</h3>
+                </p>
+            </NotAuthorized>
+            <Authorized>
+
+                @if (art is null)
+                {
+                    <div class="alert alert-danger" role="alert">
+                        Не указан артикул!
+                    </div>
+                }
+                else
+                {
+                    <ImageViewer art="@art" ver="@ver" />
+                }
+            </Authorized>
+        </AuthorizeView>
         <p><a href="/" @onclick="Logout" class="fs-6 text-muted"><small>Выйти</small></a></p>
     </Authorized>
 </AuthorizeView>

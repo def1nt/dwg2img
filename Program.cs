@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 using dwg2img.Data;
 
 namespace dwg2img;
@@ -39,11 +41,28 @@ static partial class Application
             options.Scope.Add("profile");
             options.Scope.Add("roles");
 
-            // Map Keycloak roles to claims
-            options.TokenValidationParameters = new TokenValidationParameters
+            // Source - https://stackoverflow.com/a/79190782
+            // Posted by R10t--, modified by community. See post 'Timeline' for change history
+            // Retrieved 2026-02-11, License - CC BY-SA 4.0
+            options.Events.OnTokenValidated = async ctx =>
             {
-                RoleClaimType = "role"
+                var token = ctx.TokenEndpointResponse.AccessToken;
+                var handler = new JwtSecurityTokenHandler();
+                var parsedJwt = handler.ReadJwtToken(token);
+
+                var updatedClaims = parsedJwt.Claims.ToList().Select(c =>
+                {
+                    return c.Type == "role" ? new Claim(ClaimTypes.Role, c.Value) : c;
+                });
+
+                ctx.Principal.AddIdentity(new ClaimsIdentity(updatedClaims));
             };
+
+            // Map Keycloak roles to claims
+            // options.TokenValidationParameters = new TokenValidationParameters
+            // {
+            //     RoleClaimType = "role"
+            // };
 
             // Handle sign-out
             options.Events.OnRemoteFailure = context =>

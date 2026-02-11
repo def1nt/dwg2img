@@ -39,6 +39,24 @@ public class KeycloakAuthenticationStateProvider : AuthenticationStateProvider
                 claims.Add(new Claim(ClaimTypes.Name, preferredUsernameClaim.Value));
             }
 
+            // Ensure role claims are properly mapped
+            // Check for roles in realm_access
+            var realmAccessClaim = httpContext.User.Claims.FirstOrDefault(c => c.Type == "realm_access");
+            if (realmAccessClaim != null)
+            {
+                claims.Add(new Claim("realm_access", realmAccessClaim.Value));
+
+                // Parse the realm_access JSON to extract roles
+                var realmAccess = System.Text.Json.JsonDocument.Parse(realmAccessClaim.Value);
+                if (realmAccess.RootElement.TryGetProperty("roles", out var rolesElement))
+                {
+                    foreach (var role in rolesElement.EnumerateArray())
+                    {
+                        claims.Add(new Claim(ClaimTypes.Role, role.GetString()));
+                    }
+                }
+            }
+
             var claimsIdentity = new ClaimsIdentity(claims, "Keycloak");
             var claimsPrincipal = new ClaimsPrincipal(claimsIdentity);
 
