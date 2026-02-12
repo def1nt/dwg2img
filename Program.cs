@@ -39,7 +39,16 @@ static partial class Application
             options.DefaultScheme = "Cookies";
             options.DefaultChallengeScheme = "oidc";
         })
-        .AddCookie("Cookies")
+        .AddCookie("Cookies", options =>
+            {
+                // Set cookie to persist for a longer duration
+                options.ExpireTimeSpan = TimeSpan.FromDays(30);
+                options.SlidingExpiration = true;
+                // Important: This allows the cookie to persist after browser closure
+                options.Cookie.MaxAge = TimeSpan.FromDays(30);
+                options.Cookie.SameSite = SameSiteMode.Lax;
+                options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+            })
         .AddOpenIdConnect("oidc", options =>
         {
             options.Authority = builder.Configuration["Keycloak:Authority"];
@@ -51,6 +60,7 @@ static partial class Application
             options.Scope.Add("openid");
             options.Scope.Add("profile");
             options.Scope.Add("roles");
+            options.Scope.Add("offline_access");
 
             // Configure callback paths for proxy scenarios
             var redirectHost = builder.Configuration["Redirect:Host"];
