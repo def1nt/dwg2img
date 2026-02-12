@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using dwg2img.Data;
+using Microsoft.AspNetCore.HttpOverrides;
 
 namespace dwg2img;
 
@@ -16,6 +17,16 @@ static partial class Application
         Application.ParseArgs();
 
         var builder = WebApplication.CreateBuilder();
+
+        // Configure for proxy scenarios
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                                     ForwardedHeaders.XForwardedHost |
+                                     ForwardedHeaders.XForwardedProto;
+            options.KnownNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
 
         // Add services to the container.
         builder.Services.AddRazorPages();
@@ -40,6 +51,25 @@ static partial class Application
             options.Scope.Add("openid");
             options.Scope.Add("profile");
             options.Scope.Add("roles");
+
+            // Configure callback paths for proxy scenarios
+            var redirectHost = builder.Configuration["Redirect:Host"];
+            if (!string.IsNullOrEmpty(redirectHost))
+            {
+                options.CallbackPath = "/signin-oidc";
+                options.SignedOutRedirectUri = redirectHost;
+            }
+
+            // Configure for proxy scenarios
+            options.Events.OnRedirectToIdentityProvider = context =>
+            {
+                if (!string.IsNullOrEmpty(redirectHost))
+                {
+                    context.ProtocolMessage.RedirectUri = $"{redirectHost}/signin-oidc";
+                    context.ProtocolMessage.PostLogoutRedirectUri = redirectHost;
+                }
+                return Task.CompletedTask;
+            };
 
             // Source - https://stackoverflow.com/a/79190782
             // Posted by R10t--, modified by community. See post 'Timeline' for change history
@@ -70,7 +100,15 @@ static partial class Application
                 if (context.Request.Form["error_description"].FirstOrDefault()?.Contains("Account is disabled") == true)
                 {
                     context.HandleResponse();
-                    context.Response.Redirect($"{context.Request.Scheme}://{context.Request.Host}/Account/AccessDenied");
+                    // Get redirect configuration
+                    var redirectHost = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Redirect:Host"];
+
+                    // Build the redirect URI with the configured host and protocol
+                    var redirectUri = string.IsNullOrEmpty(redirectHost)
+                        ? $"{context.Request.Scheme}://{context.Request.Host}/Account/AccessDenied"
+                        : $"{redirectHost}/Account/AccessDenied";
+
+                    context.Response.Redirect(redirectUri);
                 }
                 return Task.CompletedTask;
             };
@@ -112,6 +150,9 @@ static partial class Application
 
         app.UseStaticFiles();
         app.UseRouting();
+
+        // Add forwarded headers middleware for proxy scenarios
+        app.UseForwardedHeaders();
 
         // Add authentication middleware
         app.UseAuthentication();
