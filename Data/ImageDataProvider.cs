@@ -5,7 +5,7 @@ using Aspose.CAD.ImageOptions;
 
 namespace dwg2img.Providers;
 
-class ImageDataProvider
+sealed class ImageDataProvider
 {
     private readonly CacheProvider _cache = new();
 
@@ -16,6 +16,8 @@ class ImageDataProvider
     private const string ConnectionString = "Server={0}; Initial Catalog={1}; encrypt=false; trustServerCertificate=false; User ID={2}; Password={3}";
 
     private static readonly SqlConnection Connection = new(string.Format(ConnectionString, Server, DBName, UserID, Password));
+
+    private Bitmap? sampleBitmap;
 
     ~ImageDataProvider()
     {
@@ -178,8 +180,7 @@ class ImageDataProvider
 
     public void RemoveWatermark(ref Bitmap bitmap)
     {
-        var sampleImage = Image.FromFile(Path.Combine(AppContext.BaseDirectory, @"samples\sample.png"));
-        var sampleBitmap = new Bitmap(sampleImage);
+        sampleBitmap ??= new Bitmap(Image.FromFile(Path.Combine(AppContext.BaseDirectory, @"samples\sample.png")));
         for (int i = 0; i < sampleBitmap.Width; i++)
         {
             for (int j = 0; j < sampleBitmap.Height; j++)
@@ -280,5 +281,4 @@ class ImageDataProvider
         }
         return true;
     }
-
 }

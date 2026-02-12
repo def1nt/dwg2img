@@ -12,9 +12,11 @@ public class LoadImageService
         return _provider.GetImage(art, ver);
     }
 
+    private static readonly Dictionary<float, Font> _fontCache = new();
+    private static readonly Lock _fontCacheLock = new();
+
     public byte[] GetWatermarkedBytes(byte[] src, string[] watermark)
     {
-        var font = new Font("Arial", 200, FontStyle.Bold);
         var brush = new SolidBrush(Color.FromArgb(25, 215, 215, 215));
 
         int imgWidth, imgHeight;
@@ -28,9 +30,20 @@ public class LoadImageService
                 float textHeight = 0;
                 int totalStrings = watermark.Length * 2 + 1;
                 string longestString = watermark.OrderByDescending(s => s.Length).First();
+
+                Font? font = null;
                 for (int fontSize = 100; fontSize <= 300; fontSize += 2)
                 {
-                    font = new Font("Arial", fontSize, FontStyle.Bold);
+                    // Check font cache first
+                    lock (_fontCacheLock)
+                    {
+                        if (!_fontCache.TryGetValue(fontSize, out font))
+                        {
+                            font = new Font("Arial", fontSize, FontStyle.Bold);
+                            _fontCache[fontSize] = font;
+                        }
+                    }
+
                     textWidth = g.MeasureString(longestString, font).Width;
                     textHeight = g.MeasureString(longestString, font).Height * 0.8f; // Correction for measuring
                     if (textWidth > imgWidth - 100 || textHeight * totalStrings > imgHeight) break;
@@ -39,18 +52,31 @@ public class LoadImageService
                 int c = 1;
                 foreach (var line in watermark.Concat(watermark).Append(watermark[0]))
                 {
-                    textWidth = g.MeasureString(line, font).Width;
-                    textHeight = g.MeasureString(line, font).Height;
+                    textWidth = g.MeasureString(line, font!).Width;
+                    textHeight = g.MeasureString(line, font!).Height;
 
                     float textX = (imgWidth - textWidth) / 2;
                     float textY = (imgHeight / (totalStrings + 1) * c) - textHeight / 2;
-                    g.DrawString(line, font, brush, textX, textY);
+                    g.DrawString(line, font!, brush, textX, textY);
                     c++;
                 }
             }
             using MemoryStream ms = new();
             img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
             return ms.ToArray();
+        }
+    }
+
+    // Dispose cached fonts when service is no longer needed
+    public void Dispose()
+    {
+        lock (_fontCacheLock)
+        {
+            foreach (var font in _fontCache.Values)
+            {
+                font.Dispose();
+            }
+            _fontCache.Clear();
         }
     }
 
