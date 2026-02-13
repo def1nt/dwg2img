@@ -21,6 +21,7 @@ namespace dwg2img.Controllers
         [HttpGet("login")]
         public async Task<IActionResult> Login(string? redirectUri = "/")
         {
+            await Task.CompletedTask;
             // Get redirect configuration
             var redirectHost = _configuration["Redirect:Host"];
 

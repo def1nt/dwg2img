@@ -86,7 +86,7 @@ static partial class Application
             // Retrieved 2026-02-11, License - CC BY-SA 4.0
             options.Events.OnTokenValidated = async ctx =>
             {
-                var token = ctx.TokenEndpointResponse.AccessToken;
+                var token = ctx.TokenEndpointResponse?.AccessToken;
                 var handler = new JwtSecurityTokenHandler();
                 var parsedJwt = handler.ReadJwtToken(token);
 
@@ -95,14 +95,8 @@ static partial class Application
                     return c.Type == "role" ? new Claim(ClaimTypes.Role, c.Value) : c;
                 });
 
-                ctx.Principal.AddIdentity(new ClaimsIdentity(updatedClaims));
+                ctx.Principal?.AddIdentity(new ClaimsIdentity(updatedClaims));
             };
-
-            // Map Keycloak roles to claims
-            // options.TokenValidationParameters = new TokenValidationParameters
-            // {
-            //     RoleClaimType = "role"
-            // };
 
             // Handle sign-out
             options.Events.OnRemoteFailure = context =>

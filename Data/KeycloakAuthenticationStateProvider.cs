@@ -52,7 +52,7 @@ public class KeycloakAuthenticationStateProvider : AuthenticationStateProvider
                 {
                     foreach (var role in rolesElement.EnumerateArray())
                     {
-                        claims.Add(new Claim(ClaimTypes.Role, role.GetString()));
+                        claims.Add(new Claim(ClaimTypes.Role, role.GetString() ?? ""));
                     }
                 }
             }

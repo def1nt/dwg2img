@@ -40,6 +40,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Task.CompletedTask;
         // Check if user is authenticated
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext?.User?.Identity?.IsAuthenticated == true)
@@ -52,6 +53,7 @@
 
     private async Task LoginWithKeycloak()
     {
+        await Task.CompletedTask;
         if (redirect == "/") redirect = null;
         var redirectUrl = string.IsNullOrEmpty(redirect) ? "/" : $"/{redirect}";
         Navigation.NavigateTo($"/Auth/login?redirectUri={Uri.EscapeDataString(redirectUrl)}", true);
@@ -59,6 +61,7 @@
 
     private async Task Logout()
     {
+        await Task.CompletedTask;
         Navigation.NavigateTo("/Auth/logout", true);
     }
 }
