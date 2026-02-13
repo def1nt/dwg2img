@@ -107,19 +107,67 @@ static partial class Application
             // Handle sign-out
             options.Events.OnRemoteFailure = context =>
             {
-                if (context.Request.Form["error_description"].FirstOrDefault()?.Contains("Account is disabled") == true)
+                // Add diagnostic logging to understand the request
+                var logger = context.HttpContext.RequestServices.GetService<ILogger<Program>>() ??
+                             context.HttpContext.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("OIDC");
+
+                logger?.LogInformation("OnRemoteFailure called. Request method: {Method}, Content-Type: {ContentType}",
+                        context.Request.Method, context.Request.ContentType);
+
+                // Check if we have a form content type before accessing Form
+                if (!string.IsNullOrEmpty(context.Request.ContentType) &&
+                    (context.Request.ContentType.Contains("application/x-www-form-urlencoded") ||
+                     context.Request.ContentType.Contains("multipart/form-data")))
                 {
-                    context.HandleResponse();
-                    // Get redirect configuration
-                    var redirectHost = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Redirect:Host"];
+                    try
+                    {
+                        var errorDescription = context.Request.Form["error_description"].FirstOrDefault();
+                        logger?.LogInformation("Form error description: {ErrorDescription}", errorDescription);
 
-                    // Build the redirect URI with the configured host and protocol
-                    var redirectUri = string.IsNullOrEmpty(redirectHost)
-                        ? $"{context.Request.Scheme}://{context.Request.Host}/Account/AccessDenied"
-                        : $"{redirectHost}/Account/AccessDenied";
+                        if (errorDescription?.Contains("Account is disabled") == true)
+                        {
+                            context.HandleResponse();
+                            // Get redirect configuration
+                            var redirectHost = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Redirect:Host"];
 
-                    context.Response.Redirect(redirectUri);
+                            // Build the redirect URI with the configured host and protocol
+                            var redirectUri = string.IsNullOrEmpty(redirectHost)
+                                ? $"{context.Request.Scheme}://{context.Request.Host}/Account/AccessDenied"
+                                : $"{redirectHost}/Account/AccessDenied";
+
+                            context.Response.Redirect(redirectUri);
+                            return Task.CompletedTask;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogError(ex, "Error accessing form data in OnRemoteFailure");
+                    }
                 }
+                else
+                {
+                    logger?.LogInformation("Request does not have form content type, checking query parameters");
+                    // For non-form requests, we might have query parameters instead
+                    var errorDescription = context.Request.Query["error_description"].FirstOrDefault();
+                    logger?.LogInformation("Query error description: {ErrorDescription}", errorDescription);
+
+                    if (errorDescription?.Contains("Account is disabled") == true)
+                    {
+                        context.HandleResponse();
+                        // Get redirect configuration
+                        var redirectHost = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>()["Redirect:Host"];
+
+                        // Build the redirect URI with the configured host and protocol
+                        var redirectUri = string.IsNullOrEmpty(redirectHost)
+                            ? $"{context.Request.Scheme}://{context.Request.Host}/Account/AccessDenied"
+                            : $"{redirectHost}/Account/AccessDenied";
+
+                        context.Response.Redirect(redirectUri);
+                        return Task.CompletedTask;
+                    }
+                }
+
+                // If we get here, it's not an "Account is disabled" error, so let the default handling occur
                 return Task.CompletedTask;
             };
         });

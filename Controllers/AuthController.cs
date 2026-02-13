@@ -67,15 +67,6 @@ namespace dwg2img.Controllers
             return Redirect(fullRedirectUri);
         }
 
-        [HttpGet("signin-oidc")]
-        public async Task<IActionResult> SigninOidc()
-        {
-            // Handle the OIDC callback
-            // The OpenID Connect middleware will process the response automatically
-            // This endpoint is primarily used as a callback URL
-            return Ok();
-        }
-
         [HttpGet("refresh-token")]
         public async Task<IActionResult> RefreshToken()
         {
