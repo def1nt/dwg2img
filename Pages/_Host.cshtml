@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
     <link href="css/site.css" rel="stylesheet" />
     <link href="dwg2img.styles.css" rel="stylesheet" />
-    <link rel="icon" type="image/png" href="favicon.png"/>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
 <body>
@@ -30,5 +30,32 @@
     </div>
 
     <script src="_framework/blazor.server.js"></script>
+    <script>
+        // Function to periodically check and refresh tokens
+        function startTokenRefresh() {
+        // Call the refresh token endpoint every 20 minutes
+        setInterval(function () {
+        fetch('/Auth/refresh-token', {
+        method: 'GET',
+        credentials: 'same-origin'
+        })
+        .then(response => {
+        if (response.ok) {
+        console.log('Token refreshed successfully');
+        } else if (response.status === 401) {
+        // Redirect to login if refresh fails
+        window.location.href = '/Auth/login';
+        }
+        })
+        .catch(error => {
+        console.error('Error refreshing token:', error);
+        });
+        }, 20 * 60 * 1000); // 20 minutes
+        }
+
+        // Start token refresh when the page loads
+        window.addEventListener('load', startTokenRefresh);
+    </script>
 </body>
+
 </html>

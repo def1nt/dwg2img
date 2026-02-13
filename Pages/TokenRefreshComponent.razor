@@ -1,0 +1,54 @@
+@using dwg2img.Data
+@inject TokenRefreshService TokenRefreshService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div></div>
+
+@code {
+    private Timer? _timer;
+    private bool _isCheckingToken = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Set up a timer to check token validity every 10 minutes
+        // Use a 1-minute delay for the first check to avoid immediate execution
+        _timer = new Timer(async (state) => await CheckTokenValidityAsync(), null, TimeSpan.FromMinutes(1),
+TimeSpan.FromMinutes(10));
+    }
+
+    private async Task CheckTokenValidityAsync()
+    {
+        // Prevent concurrent execution
+        if (_isCheckingToken)
+        {
+            return;
+        }
+
+        _isCheckingToken = true;
+        try
+        {
+            var isValid = await TokenRefreshService.IsAccessTokenValidAsync();
+            if (!isValid)
+            {
+                // Try to refresh the token once
+                var refreshed = await TokenRefreshService.RefreshAccessTokenAsync();
+
+                // If refresh failed, redirect to login
+                if (!refreshed)
+                {
+                    Navigation.NavigateTo("/Auth/login", true);
+                }
+            }
+        }
+        finally
+        {
+            _isCheckingToken = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

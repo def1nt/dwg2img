@@ -134,6 +134,7 @@ static partial class Application
         builder.Services.AddScoped<LoadImageService>();
         builder.Services.AddHttpContextAccessor();
         builder.Services.AddScoped<AuthenticationStateProvider, KeycloakAuthenticationStateProvider>();
+        builder.Services.AddScoped<TokenRefreshService>();
         builder.Services.AddLogging();
 
         builder.Logging.ClearProviders();

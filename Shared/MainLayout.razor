@@ -1,6 +1,10 @@
 ﻿@inherits LayoutComponentBase
 
+@using dwg2img.Pages
+
 <PageTitle>auth</PageTitle>
+
+<TokenRefreshComponent />
 
 <div class="page" @oncontextmenu:preventDefault @oncontextmenu:stopPropagation @oncontextmenu="PreventMenu">
     <main>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
+using dwg2img.Data;
 
 namespace dwg2img.Controllers
 {
@@ -8,10 +9,14 @@ namespace dwg2img.Controllers
     public class AuthController : Controller
     {
         private readonly IConfiguration _configuration;
+        private readonly TokenRefreshService _tokenRefreshService;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IConfiguration configuration)
+        public AuthController(IConfiguration configuration, TokenRefreshService tokenRefreshService, ILogger<AuthController> logger)
         {
             _configuration = configuration;
+            _tokenRefreshService = tokenRefreshService;
+            _logger = logger;
         }
         [HttpGet("login")]
         public async Task<IActionResult> Login(string? redirectUri = "/")
@@ -69,6 +74,28 @@ namespace dwg2img.Controllers
             // The OpenID Connect middleware will process the response automatically
             // This endpoint is primarily used as a callback URL
             return Ok();
+        }
+
+        [HttpGet("refresh-token")]
+        public async Task<IActionResult> RefreshToken()
+        {
+            try
+            {
+                var result = await _tokenRefreshService.RefreshAccessTokenAsync();
+                if (result)
+                {
+                    return Ok(new { message = "Token refreshed successfully" });
+                }
+                else
+                {
+                    return Unauthorized(new { message = "Failed to refresh token" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing token");
+                return StatusCode(500, new { message = "Internal server error" });
+            }
         }
     }
 }
