@@ -46,7 +46,7 @@ static partial class Application
                 options.SlidingExpiration = true;
                 // Important: This allows the cookie to persist after browser closure
                 options.Cookie.MaxAge = TimeSpan.FromDays(30);
-                options.Cookie.SameSite = SameSiteMode.Lax;
+                options.Cookie.SameSite = SameSiteMode.None;
                 options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
             })
         .AddOpenIdConnect("oidc", options =>
