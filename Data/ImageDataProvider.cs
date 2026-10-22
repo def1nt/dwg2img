@@ -10,7 +10,8 @@ namespace dwg2img.Providers;
 
 sealed class ImageDataProvider
 {
-    private readonly CacheProvider _cache = new();
+    private readonly CacheProvider _defaultCache = new();
+    private readonly CacheProvider _cleanCache = new("cache-clean");
 
     private const string Server = "srv-search";
     private const string DBName = "search";
@@ -27,15 +28,17 @@ sealed class ImageDataProvider
         if (Connection.State != System.Data.ConnectionState.Closed) Connection.Close();
     }
 
-    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true)
+    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true, bool cleanCache = false)
     {
         byte[] bytes;
 
-        bool cached = useCache && _cache.CheckCache(art, ver);
+        var cache = cleanCache ? _cleanCache : _defaultCache;
+
+        bool cached = useCache && cache.CheckCache(art, ver);
         // bool cached = false; // Testing pre-processing
         if (cached)
         {
-            bytes = _cache.GetFromCache(art, ver);
+            bytes = cache.GetFromCache(art, ver);
         }
         else
         {
@@ -57,24 +60,24 @@ sealed class ImageDataProvider
                         bytes = ms.ToArray(); // Stream conversion
                     }
 
-                    if (useCache) _cache.SaveToCache(bytes, (art, ver));
+                    if (useCache) cache.SaveToCache(bytes, (art, ver));
                     TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
                     // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
                 }
                 else // TODO: Log this outcome somehow differently??
                 {
-                    bytes = useCache ? _cache.GetFromCache(0, 0) : Array.Empty<byte>();
+                    bytes = useCache ? cache.GetFromCache(0, 0) : Array.Empty<byte>();
                 }
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
                 Console.WriteLine($"{art}/{ver}: ImageLoadException: {e.Message}");
-                bytes = useCache ? _cache.GetFromCache(-1, 0) : Array.Empty<byte>();
+                bytes = useCache ? cache.GetFromCache(-1, 0) : Array.Empty<byte>();
             }
             catch (Exception e)
             {
                 Console.WriteLine($"{art}/{ver}: Exception: {e.Message}\n{e.StackTrace}");
-                bytes = useCache ? _cache.GetFromCache(-2, 0) : Array.Empty<byte>();
+                bytes = useCache ? cache.GetFromCache(-2, 0) : Array.Empty<byte>();
             }
         }
 

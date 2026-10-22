@@ -9,9 +9,9 @@ public class LoadImageService
     private static readonly SolidBrush brush = new(Color.FromArgb(25, 215, 215, 215));
     private readonly ImageDataProvider _provider = new();
 
-    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true)
+    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true, bool cleanCache = false)
     {
-        return _provider.GetImage(art, ver, stripDimensions, useCache);
+        return _provider.GetImage(art, ver, stripDimensions, useCache, cleanCache);
     }
 
     public byte[] GetBytes(int art, int ver)

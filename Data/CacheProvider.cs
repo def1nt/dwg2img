@@ -2,10 +2,11 @@ namespace dwg2img.Providers;
 
 public sealed class CacheProvider
 {
-    private readonly string cache = Path.Join(AppContext.BaseDirectory, "cache") + Path.DirectorySeparatorChar;
+    private readonly string cache;
 
-    public CacheProvider()
+    public CacheProvider(string directoryName = "cache")
     {
+        cache = Path.Join(AppContext.BaseDirectory, directoryName) + Path.DirectorySeparatorChar;
         InitCache();
     }
 
