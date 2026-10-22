@@ -17,7 +17,7 @@ public class LoadImageService
     public byte[] GetWatermarkedBytes(byte[] src, string[] watermark)
     {
         int imgWidth, imgHeight;
-        using (var img = Image.FromStream(new MemoryStream(src)))
+        using (var img = Image.FromStream(new MemoryStream(src))) // Stream conversion // Crashes here: Out of memory
         {
             imgWidth = img.Width;
             imgHeight = img.Height;
@@ -41,7 +41,7 @@ public class LoadImageService
             }
             using MemoryStream ms = new();
             img.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-            return ms.ToArray();
+            return ms.ToArray(); // Stream conversion
         }
     }
 
