@@ -172,7 +172,7 @@ sealed class ImageDataProvider
             PageWidth = 4800,
             PageHeight = 4800,
         };
-        if (stripDimensions) rasterizationOptions.Layers = ["0"];
+        if (stripDimensions) rasterizationOptions.Layers = ["0", "POZ", "ASS"]; // Главный слой и сноски
 
         var options = new PngOptions
         {
