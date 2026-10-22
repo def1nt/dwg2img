@@ -27,11 +27,11 @@ sealed class ImageDataProvider
         if (Connection.State != System.Data.ConnectionState.Closed) Connection.Close();
     }
 
-    public byte[] GetImage(int art, int ver)
+    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true)
     {
         byte[] bytes;
 
-        bool cached = _cache.CheckCache(art, ver);
+        bool cached = useCache && _cache.CheckCache(art, ver);
         // bool cached = false; // Testing pre-processing
         if (cached)
         {
@@ -45,7 +45,7 @@ sealed class ImageDataProvider
                 bytes = GetFile(art, ver);
                 if (bytes.Length != 0)
                 {
-                    bytes = Convert(bytes);
+                    bytes = Convert(bytes, stripDimensions);
 
                     var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes))); // Stream conversion
                     RemoveWatermark(ref bitmap);
@@ -57,24 +57,24 @@ sealed class ImageDataProvider
                         bytes = ms.ToArray(); // Stream conversion
                     }
 
-                    _cache.SaveToCache(bytes, (art, ver));
+                    if (useCache) _cache.SaveToCache(bytes, (art, ver));
                     TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
                     // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
                 }
                 else // TODO: Log this outcome somehow differently??
                 {
-                    bytes = _cache.GetFromCache(0, 0);
+                    bytes = useCache ? _cache.GetFromCache(0, 0) : Array.Empty<byte>();
                 }
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
                 Console.WriteLine($"{art}/{ver}: ImageLoadException: {e.Message}");
-                bytes = _cache.GetFromCache(-1, 0);
+                bytes = useCache ? _cache.GetFromCache(-1, 0) : Array.Empty<byte>();
             }
             catch (Exception e)
             {
                 Console.WriteLine($"{art}/{ver}: Exception: {e.Message}\n{e.StackTrace}");
-                bytes = _cache.GetFromCache(-2, 0);
+                bytes = useCache ? _cache.GetFromCache(-2, 0) : Array.Empty<byte>();
             }
         }
 

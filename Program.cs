@@ -213,6 +213,19 @@ static partial class Application
 
         app.MapControllers();
         app.MapBlazorHub();
+
+        // Serves stripped PNG with nothing middleware: no cache, auth, watermark, loading indicator even
+        app.MapGet("/clean/{art?}/{ver?}", async (int? art, int? ver, LoadImageService imageService) =>
+        {
+            int artInt = art ?? 0;
+            int verInt = ver ?? 0;
+
+            var bytes = await Task.Run(() => imageService.GetImage(artInt, verInt, stripDimensions: true, useCache: false));
+            if (bytes.Length == 0) return Results.NotFound();
+
+            return Results.File(bytes, "image/png");
+        });
+
         app.MapFallbackToPage("/_Host");
 
         await app.RunAsync(cancellationToken);

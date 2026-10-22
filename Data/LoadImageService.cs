@@ -9,9 +9,14 @@ public class LoadImageService
     private static readonly SolidBrush brush = new(Color.FromArgb(25, 215, 215, 215));
     private readonly ImageDataProvider _provider = new();
 
+    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true)
+    {
+        return _provider.GetImage(art, ver, stripDimensions, useCache);
+    }
+
     public byte[] GetBytes(int art, int ver)
     {
-        return _provider.GetImage(art, ver);
+        return GetImage(art, ver);
     }
 
     public byte[] GetWatermarkedBytes(byte[] src, string[] watermark)
@@ -51,7 +56,7 @@ public class LoadImageService
     {
         return await Task.Run(() =>
         {
-            var bytes = GetBytes(art, ver);
+            var bytes = GetImage(art, ver, stripDimensions: false, useCache: true);
             bytes = GetWatermarkedBytes(bytes, watermark);
             return GetBase64(bytes);
         });
