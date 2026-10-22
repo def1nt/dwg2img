@@ -2,6 +2,9 @@ using Microsoft.Data.SqlClient;
 using System.Drawing;
 using zlib;
 using Aspose.CAD.ImageOptions;
+using Aspose.CAD.FileFormats.Cad;
+using Aspose.CAD.FileFormats.Cad.CadObjects;
+using Aspose.CAD.FileFormats.Cad.CadConsts;
 
 namespace dwg2img.Providers;
 
@@ -44,14 +47,14 @@ sealed class ImageDataProvider
                 {
                     bytes = Convert(bytes);
 
-                    var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes)));
+                    var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes))); // Stream conversion
                     RemoveWatermark(ref bitmap);
                     CropWhiteSpace(ref bitmap);
 
                     using (var ms = new MemoryStream())
                     {
                         bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                        bytes = ms.ToArray();
+                        bytes = ms.ToArray(); // Stream conversion
                     }
 
                     _cache.SaveToCache(bytes, (art, ver));
@@ -65,12 +68,12 @@ sealed class ImageDataProvider
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
-                Console.WriteLine($"{art}/{ver}: {e.Message}");
+                Console.WriteLine($"{art}/{ver}: ImageLoadException: {e.Message}");
                 bytes = _cache.GetFromCache(-1, 0);
             }
             catch (Exception e)
             {
-                Console.WriteLine($"{art}/{ver}: {e.Message}");
+                Console.WriteLine($"{art}/{ver}: Exception: {e.Message}\n{e.StackTrace}");
                 bytes = _cache.GetFromCache(-2, 0);
             }
         }
@@ -126,7 +129,7 @@ sealed class ImageDataProvider
                 rawfile = (byte[])reader.GetValue(0);
 
                 try { Decompress(rawfile, out file); }
-                catch (Exception e) { System.Console.WriteLine(e.Message); return Array.Empty<byte>(); }
+                catch (Exception e) { System.Console.WriteLine("Decompress: " + e.Message); return Array.Empty<byte>(); }
             }
         }
         return file;
@@ -153,29 +156,72 @@ sealed class ImageDataProvider
         output.Flush();
     }
 
-    public byte[] Convert(byte[] dwg)
+    public byte[] Convert(byte[] dwg, bool stripDimensions = false)
     {
-        MemoryStream output = new();
-        using (var source = new MemoryStream(dwg, false))
-        using (var image = Aspose.CAD.Image.Load(source))
+        using var source = new MemoryStream(dwg, writable: false);
+        using var image = (CadImage)Aspose.CAD.Image.Load(source);
+
+        if (stripDimensions)
+            RemoveDimensions(image);
+
+        using var output = new MemoryStream();
+        var rasterizationOptions = new CadRasterizationOptions
         {
-            // Create an instance of CadRasterizationOptions and set its various properties
-            CadRasterizationOptions rasterizationOptions = new()
-            {
-                BackgroundColor = Aspose.CAD.Color.White,
-                DrawType = Aspose.CAD.FileFormats.Cad.CadDrawTypeMode.UseObjectColor,
-                PageWidth = 4800,
-                PageHeight = 4800
-            };
+            BackgroundColor = Aspose.CAD.Color.White,
+            DrawType = CadDrawTypeMode.UseObjectColor,
+            PageWidth = 4800,
+            PageHeight = 4800,
+        };
+        if (stripDimensions) rasterizationOptions.Layers = ["0"];
 
-            var options = new PngOptions
-            {
-                VectorRasterizationOptions = rasterizationOptions
-            };
+        var options = new PngOptions
+        {
+            VectorRasterizationOptions = rasterizationOptions
+        };
 
-            image.Save(output, options);
+        image.Save(output, options);
+        return output.ToArray();
+
+        // A dimension is a DIMENSION entity (any CadDimensionBase subclass: rotated,
+        // aligned, radial, diametric, angular, ordinate, R12, ...). Some third-party
+        // CADs wrap their own dimension markers in ACAD_PROXY_ENTITY objects and put
+        // the real class name into SubClassName, so check that too.
+        static bool IsDimension(CadBaseEntity entity) =>
+            entity is CadDimensionBase
+            || entity.TypeName == CadEntityTypeName.DIMENSION
+            || (entity is CadAcadProxyEntity proxy
+                && proxy.SubClassName?.IndexOf("DIMENSION", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        static void RemoveDimensions(CadImage cad)
+        {
+            // Model/paper space. RemoveEntity keeps Aspose's internal model-space
+            // bookkeeping in sync with the public Entities array.
+            if (cad.Entities != null)
+            {
+                foreach (var entity in cad.Entities.Where(IsDimension).ToList())
+                    cad.RemoveEntity(entity);
+            }
+
+            // Model space is also exposed as the *MODEL_SPACE block, and every nested
+            // block (including layout blocks and blocks inserted on layer "0") has its
+            // own entity list. Dimensions must be removed from the block definitions as
+            // well, otherwise they would still be drawn through their INSERT.
+            foreach (var block in cad.BlockEntities.ValuesTyped)
+            {
+                var entities = block.Entities;
+                if (entities == null)
+                    continue;
+
+                var kept = entities.Where(entity => !IsDimension(entity)).ToArray();
+                if (kept.Length != entities.Length)
+                    block.Entities = kept;
+            }
+
+            // RemoveEntity already changed this array, but assigning the filtered array
+            // also covers files where the model-space block and Entities are not shared.
+            if (cad.Entities != null)
+                cad.Entities = cad.Entities.Where(entity => !IsDimension(entity)).ToArray();
         }
-        return output.GetBuffer();
     }
 
     public void RemoveWatermark(ref Bitmap bitmap)
