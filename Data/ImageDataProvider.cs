@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using System.Drawing;
+using System.IO.Compression;
 using zlib;
 using Aspose.CAD.ImageOptions;
 using Aspose.CAD.FileFormats.Cad;
@@ -32,7 +33,7 @@ sealed class ImageDataProvider
     {
         byte[] bytes;
 
-        var cache = cleanCache ? _cleanCache : _defaultCache;
+        var cache = (stripDimensions || cleanCache) ? _cleanCache : _defaultCache;
 
         bool cached = useCache && cache.CheckCache(art, ver);
         // bool cached = false; // Testing pre-processing
@@ -48,36 +49,49 @@ sealed class ImageDataProvider
                 bytes = GetFile(art, ver);
                 if (bytes.Length != 0)
                 {
-                    bytes = Convert(bytes, stripDimensions);
+                    bytes = Convert(bytes, out int borders, stripDimensions);
+                    // System.Console.WriteLine($"Border layers: {borders}");
 
                     var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes))); // Stream conversion
-                    RemoveWatermark(ref bitmap);
-                    CropWhiteSpace(ref bitmap);
-
-                    using (var ms = new MemoryStream())
+                    try
                     {
-                        bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                        bytes = ms.ToArray(); // Stream conversion
-                    }
+                        RemoveWatermark(ref bitmap);
+                        CropWhiteSpace(ref bitmap);
 
-                    if (useCache) cache.SaveToCache(bytes, (art, ver));
-                    TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
-                    // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
+                        if (stripDimensions)
+                        {
+                            bytes = BuildStripZip(bitmap, borders);
+                        }
+                        else
+                        {
+                            using var ms = new MemoryStream();
+                            bitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                            bytes = ms.ToArray(); // Stream conversion
+                        }
+
+                        if (useCache) cache.SaveToCache(bytes, (art, ver));
+                        TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
+                        // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
+                    }
+                    finally
+                    {
+                        bitmap.Dispose();
+                    }
                 }
                 else // TODO: Log this outcome somehow differently??
                 {
-                    bytes = useCache ? cache.GetFromCache(0, 0) : Array.Empty<byte>();
+                    bytes = !cleanCache ? cache.GetFromCache(0, 0) : Array.Empty<byte>();
                 }
             }
             catch (Aspose.CAD.CadExceptions.ImageLoadException e)
             {
                 Console.WriteLine($"{art}/{ver}: ImageLoadException: {e.Message}");
-                bytes = useCache ? cache.GetFromCache(-1, 0) : Array.Empty<byte>();
+                bytes = !cleanCache ? cache.GetFromCache(-1, 0) : Array.Empty<byte>();
             }
             catch (Exception e)
             {
                 Console.WriteLine($"{art}/{ver}: Exception: {e.Message}\n{e.StackTrace}");
-                bytes = useCache ? cache.GetFromCache(-2, 0) : Array.Empty<byte>();
+                bytes = !cleanCache ? cache.GetFromCache(-2, 0) : Array.Empty<byte>();
             }
         }
 
@@ -159,13 +173,15 @@ sealed class ImageDataProvider
         output.Flush();
     }
 
-    public byte[] Convert(byte[] dwg, bool stripDimensions = false)
+    public byte[] Convert(byte[] dwg, out int borders, bool stripDimensions = false)
     {
         using var source = new MemoryStream(dwg, writable: false);
         using var image = (CadImage)Aspose.CAD.Image.Load(source);
 
         if (stripDimensions)
             RemoveDimensions(image);
+
+        borders = image.Layers.GetLayersNames().Count(s => s.Contains("BORDER"));
 
         using var output = new MemoryStream();
         var rasterizationOptions = new CadRasterizationOptions
@@ -329,5 +345,74 @@ sealed class ImageDataProvider
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// Slices the bitmap into <paramref name="borders"/> vertical strips, encodes
+    /// each strip as a PNG in memory and packs them into an in-memory ZIP archive
+    /// whose entries are named part_0.png .. part_{partCount-1}.png.
+    /// </summary>
+    private static byte[] BuildStripZip(Bitmap bitmap, int borders)
+    {
+        // If no BORDER layers we kinda assume it's 1
+        int partCount = borders > 0 ? borders : 1;
+        if (borders <= 0) Console.WriteLine($"Border layers: {borders}, falling back to a single strip.");
+
+        // If in some fantastic event image is a couple pixels wide, slice just them
+        // and return so OBVIOUSLY an error is APPARENT
+        if (partCount > bitmap.Width) partCount = bitmap.Width;
+
+        Bitmap[] slices = Split(in bitmap, partCount);
+        try
+        {
+            using var zipStream = new MemoryStream();
+            using (var zip = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                for (int i = 0; i < slices.Length; i++)
+                {
+                    using var pngStream = new MemoryStream();
+                    slices[i].Save(pngStream, System.Drawing.Imaging.ImageFormat.Png);
+                    byte[] png = pngStream.ToArray();
+
+                    // Every created entry gets its slice data written below, so the
+                    // archive never contains empty or trailing entries.
+                    ZipArchiveEntry entry = zip.CreateEntry($"part_{i}.png", CompressionLevel.Optimal);
+                    using Stream entryStream = entry.Open();
+                    entryStream.Write(png, 0, png.Length);
+                }
+                // Disposing the archive flushes all entry streams and writes the
+                // central directory into zipStream before its bytes are read back.
+            }
+            return zipStream.ToArray();
+        }
+        finally
+        {
+            foreach (Bitmap slice in slices) slice.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Splits <paramref name="bitmap"/> into <paramref name="parts"/> vertical slices
+    /// (equal-width columns) that preserve the full image height. The remainder of
+    /// Width / parts is distributed one extra pixel at a time across the leading
+    /// (left-most) slices, the rest use Math.Floor(Width / parts) widths, so no slice
+    /// differs from the others by more than 1 px.
+    /// </summary>
+    private static Bitmap[] Split(in Bitmap bitmap, int parts)
+    {
+        if (parts < 1) throw new ArgumentOutOfRangeException(nameof(parts), parts, "Parts must be at least 1.");
+
+        var result = new Bitmap[parts];
+        int baseWidth = bitmap.Width / parts; // floor; remainder goes to leading slices
+        int extra = bitmap.Width % parts;
+
+        int x = 0;
+        for (int i = 0; i < parts; i++)
+        {
+            int width = baseWidth + (i < extra ? 1 : 0);
+            result[i] = bitmap.Clone(new Rectangle(x, 0, width, bitmap.Height), System.Drawing.Imaging.PixelFormat.DontCare);
+            x += width;
+        }
+        return result;
     }
 }

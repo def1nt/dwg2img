@@ -223,7 +223,7 @@ static partial class Application
             var bytes = await Task.Run(() => imageService.GetImage(artInt, verInt, stripDimensions: true, useCache: true, cleanCache: true));
             if (bytes.Length == 0) return Results.NotFound();
 
-            return Results.File(bytes, "image/png");
+            return Results.File(bytes, "application/zip");
         });
 
         app.MapFallbackToPage("/_Host");
