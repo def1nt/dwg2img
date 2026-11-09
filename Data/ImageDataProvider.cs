@@ -5,6 +5,8 @@ using zlib;
 using Aspose.CAD.ImageOptions;
 using Aspose.CAD.FileFormats.Cad;
 using Aspose.CAD.FileFormats.Cad.CadObjects;
+using Aspose.CAD.FileFormats.Cad.CadObjects.Polylines;
+using Aspose.CAD.FileFormats.Cad.CadObjects.Vertices;
 using Aspose.CAD.FileFormats.Cad.CadConsts;
 
 namespace dwg2img.Providers;
@@ -49,18 +51,24 @@ sealed class ImageDataProvider
                 bytes = GetFile(art, ver);
                 if (bytes.Length != 0)
                 {
-                    bytes = Convert(bytes, out int borders, stripDimensions);
-                    // System.Console.WriteLine($"Border layers: {borders}");
-
+                    bytes = Convert(bytes, out Rectangle[] borders, stripDimensions);
                     var bitmap = new Bitmap(Image.FromStream(new MemoryStream(bytes))); // Stream conversion
                     try
                     {
                         RemoveWatermark(ref bitmap);
-                        CropWhiteSpace(ref bitmap);
-
+                        Rectangle crop = CropWhiteSpace(ref bitmap);
                         if (stripDimensions)
                         {
-                            bytes = BuildStripZip(bitmap, borders);
+                            Rectangle[] parts = MapBorders(borders, crop);
+                            if (parts.Length == 0)
+                            {
+                                Console.WriteLine($"{art}/{ver}: No BORDER geometry found; drawing is considered malformed.");
+                                bytes = Array.Empty<byte>();
+                            }
+                            else
+                            {
+                                bytes = BuildStripZip(bitmap, parts);
+                            }
                         }
                         else
                         {
@@ -69,7 +77,7 @@ sealed class ImageDataProvider
                             bytes = ms.ToArray(); // Stream conversion
                         }
 
-                        if (useCache) cache.SaveToCache(bytes, (art, ver));
+                        if (useCache && bytes.Length > 0) cache.SaveToCache(bytes, (art, ver));
                         TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
                         // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
                     }
@@ -173,7 +181,7 @@ sealed class ImageDataProvider
         output.Flush();
     }
 
-    public byte[] Convert(byte[] dwg, out int borders, bool stripDimensions = false)
+    public byte[] Convert(byte[] dwg, out Rectangle[] borders, bool stripDimensions = false)
     {
         using var source = new MemoryStream(dwg, writable: false);
         using var image = (CadImage)Aspose.CAD.Image.Load(source);
@@ -181,7 +189,20 @@ sealed class ImageDataProvider
         if (stripDimensions)
             RemoveDimensions(image);
 
-        borders = image.Layers.GetLayersNames().Count(s => s.Contains("BORDER"));
+        // Locate the actual border frames while the vector data is still
+        // available. Each BORDER* layer is expected to contain one frame; the
+        // returned rectangles are in model coordinates and are mapped onto the
+        // rasterized/cropped bitmap later. Border detection must never prevent
+        // the normal (non-sliced) image from being produced.
+        try
+        {
+            borders = ToModelRectangles(FindBorderBounds(image));
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Border detection failed: {e.Message}");
+            borders = Array.Empty<Rectangle>();
+        }
 
         using var output = new MemoryStream();
         var rasterizationOptions = new CadRasterizationOptions
@@ -191,7 +212,7 @@ sealed class ImageDataProvider
             PageWidth = 4800,
             PageHeight = 4800,
         };
-        if (stripDimensions) rasterizationOptions.Layers = ["0", "POZ", "ASS"]; // Главный слой и сноски
+        if (stripDimensions) rasterizationOptions.Layers = ["0", "POZ", "ASS", "0_DIM", "BORDER", "BORDER1", "BORDER2", "BORDER3"]; // Главный слой, сноски и рамки, допустим четыре
 
         var options = new PngOptions
         {
@@ -261,11 +282,13 @@ sealed class ImageDataProvider
         }
     }
 
-    public void CropWhiteSpace(ref Bitmap bitmap)
+    // Modifies bitmap in place, returns crop rectangle for border coordinates mapping
+    public Rectangle CropWhiteSpace(ref Bitmap bitmap)
     {
         var testBorder = FindBorder(in bitmap);
 
         bitmap = bitmap.Clone(testBorder, System.Drawing.Imaging.PixelFormat.DontCare);
+        return testBorder;
     }
 
     private Rectangle FindBorder(in Bitmap bitmap)
@@ -348,21 +371,17 @@ sealed class ImageDataProvider
     }
 
     /// <summary>
-    /// Slices the bitmap into <paramref name="borders"/> vertical strips, encodes
-    /// each strip as a PNG in memory and packs them into an in-memory ZIP archive
-    /// whose entries are named part_0.png .. part_{partCount-1}.png.
+    /// Slices the bitmap into the supplied rectangles, encodes each slice as a PNG
+    /// in memory and packs them into an in-memory ZIP archive whose entries are
+    /// named part_0.png .. part_{partCount-1}.png.
     /// </summary>
-    private static byte[] BuildStripZip(Bitmap bitmap, int borders)
+    private static byte[] BuildStripZip(Bitmap bitmap, Rectangle[] parts)
     {
-        // If no BORDER layers we kinda assume it's 1
-        int partCount = borders > 0 ? borders : 1;
-        if (borders <= 0) Console.WriteLine($"Border layers: {borders}, falling back to a single strip.");
+        if (parts.Length == 0) return Array.Empty<byte>();
 
-        // If in some fantastic event image is a couple pixels wide, slice just them
-        // and return so OBVIOUSLY an error is APPARENT
-        if (partCount > bitmap.Width) partCount = bitmap.Width;
+        Bitmap[] slices = Split(in bitmap, parts);
+        if (slices.Length == 0) return Array.Empty<byte>();
 
-        Bitmap[] slices = Split(in bitmap, partCount);
         try
         {
             using var zipStream = new MemoryStream();
@@ -392,27 +411,415 @@ sealed class ImageDataProvider
     }
 
     /// <summary>
-    /// Splits <paramref name="bitmap"/> into <paramref name="parts"/> vertical slices
-    /// (equal-width columns) that preserve the full image height. The remainder of
-    /// Width / parts is distributed one extra pixel at a time across the leading
-    /// (left-most) slices, the rest use Math.Floor(Width / parts) widths, so no slice
-    /// differs from the others by more than 1 px.
+    /// Crops <paramref name="bitmap"/> to each rectangle. Rectangles are already
+    /// expressed in the bitmap's coordinate system and define the actual page
+    /// borders, so parts with different widths are preserved exactly.
     /// </summary>
-    private static Bitmap[] Split(in Bitmap bitmap, int parts)
+    private static Bitmap[] Split(in Bitmap bitmap, Rectangle[] parts)
     {
-        if (parts < 1) throw new ArgumentOutOfRangeException(nameof(parts), parts, "Parts must be at least 1.");
+        var imageBounds = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        var result = new List<Bitmap>(parts.Length);
 
-        var result = new Bitmap[parts];
-        int baseWidth = bitmap.Width / parts; // floor; remainder goes to leading slices
-        int extra = bitmap.Width % parts;
-
-        int x = 0;
-        for (int i = 0; i < parts; i++)
+        foreach (Rectangle part in parts)
         {
-            int width = baseWidth + (i < extra ? 1 : 0);
-            result[i] = bitmap.Clone(new Rectangle(x, 0, width, bitmap.Height), System.Drawing.Imaging.PixelFormat.DontCare);
-            x += width;
+            Rectangle slice = Rectangle.Intersect(part, imageBounds);
+            if (slice.Width <= 0 || slice.Height <= 0)
+                continue;
+
+            result.Add(bitmap.Clone(slice, System.Drawing.Imaging.PixelFormat.DontCare));
+        }
+
+        return result.ToArray();
+    }
+
+    /// <summary>
+    /// Converts the model-space border bounds into integer rectangles. The values
+    /// are relative to the model origin; <see cref="MapBorders"/> fits their union
+    /// onto the actual raster ink bounds later.
+    /// </summary>
+    private static Rectangle[] ToModelRectangles(Dictionary<string, ModelBounds> borderBounds)
+    {
+        return borderBounds.Values
+            .Where(b => b.IsValid)
+            .Select(b => Rectangle.FromLTRB(
+                (int)Math.Floor(b.MinX),
+                (int)Math.Floor(b.MinY),
+                (int)Math.Ceiling(b.MaxX),
+                (int)Math.Ceiling(b.MaxY)))
+            .Where(r => r.Width > 0 && r.Height > 0)
+            .OrderBy(r => r.Left)
+            .ThenBy(r => r.Top)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Maps model-space border rectangles onto the cropped raster. The union of
+    /// all borders is fitted to the raster's ink bounds, which preserves the
+    /// relative widths of unequal BORDER layers.
+    /// </summary>
+    private static Rectangle[] MapBorders(Rectangle[] modelRects, Rectangle crop)
+    {
+        if (modelRects.Length == 0 || crop.Width <= 0 || crop.Height <= 0)
+            return Array.Empty<Rectangle>();
+
+        Rectangle union = UnionBounds(modelRects);
+        if (union.Width <= 0 || union.Height <= 0)
+            return Array.Empty<Rectangle>();
+
+        var result = new List<Rectangle>(modelRects.Length);
+        var cropBounds = new Rectangle(0, 0, crop.Width, crop.Height);
+
+        foreach (Rectangle rect in modelRects)
+        {
+            int left = (int)Math.Round(((double)rect.Left - union.Left) / union.Width * crop.Width);
+            int right = (int)Math.Round(((double)rect.Right - union.Left) / union.Width * crop.Width);
+            int top = (int)Math.Round(((double)union.Bottom - rect.Bottom) / union.Height * crop.Height);
+            int bottom = (int)Math.Round(((double)union.Bottom - rect.Top) / union.Height * crop.Height);
+
+            Rectangle part = Rectangle.FromLTRB(left, top, right, bottom);
+            part = Rectangle.Intersect(part, cropBounds);
+            if (part.Width > 0 && part.Height > 0)
+                result.Add(part);
+        }
+
+        return result.ToArray();
+    }
+
+    private static Rectangle UnionBounds(IEnumerable<Rectangle> rectangles)
+    {
+        int left = int.MaxValue, top = int.MaxValue, right = int.MinValue, bottom = int.MinValue;
+        foreach (Rectangle rect in rectangles)
+        {
+            left = Math.Min(left, rect.Left);
+            top = Math.Min(top, rect.Top);
+            right = Math.Max(right, rect.Right);
+            bottom = Math.Max(bottom, rect.Bottom);
+        }
+
+        return right >= left && bottom >= top
+            ? Rectangle.FromLTRB(left, top, right, bottom)
+            : Rectangle.Empty;
+    }
+
+    /// <summary>
+    /// Walks the model space (including nested block inserts) and computes the
+    /// union of curve geometry for every layer whose name contains "BORDER".
+    /// </summary>
+    private static Dictionary<string, ModelBounds> FindBorderBounds(CadImage image)
+    {
+        var unions = new Dictionary<string, ModelBounds>(StringComparer.OrdinalIgnoreCase);
+        var largestClosed = new Dictionary<string, (ModelBounds Bounds, double Area)>(StringComparer.OrdinalIgnoreCase);
+
+        var borderLayers = image.Layers?.GetLayersNames()
+            .Where(name => !string.IsNullOrWhiteSpace(name)
+                && name.Contains("BORDER", StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (borderLayers == null || borderLayers.Count == 0 || image.Entities == null)
+            return new Dictionary<string, ModelBounds>(StringComparer.OrdinalIgnoreCase);
+
+        var blockStack = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Walk(image.Entities, Affine.Identity, null, 0);
+
+        // A border frame is normally the largest closed polyline on its layer
+        // (outer + inner frame lines are both closed; the outer one wins). If a
+        // file draws the frame from separate LINE entities, fall back to the
+        // union of all curve geometry on that layer.
+        var result = new Dictionary<string, ModelBounds>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in unions)
+        {
+            result[pair.Key] = largestClosed.TryGetValue(pair.Key, out var closed)
+                ? closed.Bounds
+                : pair.Value;
         }
         return result;
+
+        void Walk(IEnumerable<CadBaseEntity>? entities, Affine transform, string? inheritedLayer, int depth)
+        {
+            if (entities == null || depth > 16)
+                return;
+
+            foreach (var entity in entities)
+            {
+                if (entity == null)
+                    continue;
+
+                if (entity is CadInsertObject insert)
+                {
+                    string? insertLayer = EffectiveLayer(insert.LayerName, inheritedLayer);
+                    string? blockName = !string.IsNullOrWhiteSpace(insert.Name)
+                        ? insert.Name
+                        : insert.OriginalBlockName;
+
+                    if (string.IsNullOrWhiteSpace(blockName) || !blockStack.Add(blockName))
+                        continue;
+
+                    try
+                    {
+                        CadBlockEntity? block = null;
+                        if (image.BlockEntities.ContainsKey(blockName))
+                            block = image.BlockEntities[blockName];
+                        else
+                        {
+                            string? key = image.BlockEntities.KeysTyped
+                                .FirstOrDefault(k => string.Equals(k, blockName, StringComparison.OrdinalIgnoreCase));
+                            if (key != null)
+                                block = image.BlockEntities[key];
+                        }
+
+                        if (block?.Entities == null)
+                            continue;
+
+                        var basePoint = block.BasePoint ?? new Cad3DPoint();
+                        Affine insertTransform = BuildInsertTransform(insert, basePoint).Then(transform);
+                        Walk(block.Entities, insertTransform, insertLayer, depth + 1);
+                    }
+                    finally
+                    {
+                        blockStack.Remove(blockName);
+                    }
+
+                    continue;
+                }
+
+                string? layer = EffectiveLayer(entity.LayerName, inheritedLayer);
+                if (layer != null
+                    && borderLayers.Contains(layer)
+                    && TryGetCurveBounds(entity, out ModelBounds local))
+                {
+                    ModelBounds world = TransformBounds(local, transform);
+
+                    // Ignore degenerate geometry (points/zero-length lines): it
+                    // would otherwise pull the layer bounds towards the origin.
+                    if (world.Width == 0 && world.Height == 0)
+                        continue;
+
+                    unions[layer] = unions.TryGetValue(layer, out ModelBounds existing)
+                        ? existing.Union(world)
+                        : world;
+
+                    if (IsClosedPolyline(entity))
+                    {
+                        double area = world.Width * world.Height;
+                        if (!largestClosed.TryGetValue(layer, out var best) || area > best.Area)
+                            largestClosed[layer] = (world, area);
+                    }
+                }
+
+                // Some proxy/complex entities expose their geometry as children.
+                if (entity.ChildObjects is { Count: > 0 })
+                    Walk(entity.ChildObjects, transform, layer, depth + 1);
+            }
+        }
+    }
+
+    private static string? EffectiveLayer(string? layer, string? inheritedLayer)
+    {
+        if (string.IsNullOrWhiteSpace(layer) || string.Equals(layer, "0", StringComparison.OrdinalIgnoreCase))
+            return inheritedLayer ?? layer;
+        return layer;
+    }
+
+    private static bool IsClosedPolyline(CadBaseEntity entity)
+    {
+        switch (entity)
+        {
+            case CadLwPolyline polyline:
+                if ((polyline.Flag & CadLwPolylineFlag.Closed) == CadLwPolylineFlag.Closed)
+                    return true;
+
+                if (polyline.Coordinates is { Count: > 1 })
+                {
+                    var first = polyline.Coordinates[0];
+                    var last = polyline.Coordinates[^1];
+                    return Math.Abs(first.X - last.X) < 1e-6
+                        && Math.Abs(first.Y - last.Y) < 1e-6;
+                }
+                return false;
+
+            case CadPolylineBase polyline:
+                return (polyline.Flag & CadPolylineFlag.CLOSED_POLY) == CadPolylineFlag.CLOSED_POLY;
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryGetCurveBounds(CadBaseEntity entity, out ModelBounds bounds)
+    {
+        switch (entity)
+        {
+            case CadLine line when line.FirstPoint != null && line.SecondPoint != null:
+                bounds = ModelBounds.FromPoints(line.FirstPoint, line.SecondPoint);
+                return true;
+
+            case CadLwPolyline polyline when polyline.Coordinates is { Count: > 0 }:
+                bounds = ModelBounds.FromPoints(polyline.Coordinates
+                    .Where(p => p != null)
+                    .Select(p => (p.X, p.Y)));
+                return true;
+
+            case CadPolylineBase polyline when polyline.ChildObjects is { Count: > 0 }:
+                var vertices = polyline.ChildObjects
+                    .OfType<CadVertexBase>()
+                    .Select(vertex => vertex.LocationPoint)
+                    .Where(point => point != null)
+                    .ToList();
+                if (vertices.Count > 0)
+                {
+                    bounds = ModelBounds.FromPoints(vertices);
+                    return true;
+                }
+                break;
+
+            case CadCircle circle when circle.CenterPoint != null:
+                bounds = ModelBounds.FromCenterRadius(circle.CenterPoint, circle.Radius);
+                return true;
+
+            case CadArc arc when arc.CenterPoint != null:
+                bounds = ModelBounds.FromCenterRadius(arc.CenterPoint, arc.Radius);
+                return true;
+
+            case CadEllipse ellipse when ellipse.CenterPoint != null:
+                double radius = Math.Max(Length(ellipse.MajorEndPoint), Length(ellipse.MinorEndPoint));
+                bounds = ModelBounds.FromCenterRadius(ellipse.CenterPoint, radius);
+                return true;
+
+            case CadSpline spline:
+                var points = new List<Cad3DPoint>();
+                if (spline.ControlPoints != null)
+                    points.AddRange(spline.ControlPoints.Where(p => p != null));
+                if (spline.FitPoints != null)
+                    points.AddRange(spline.FitPoints.Where(p => p != null));
+                if (points.Count > 0)
+                {
+                    bounds = ModelBounds.FromPoints(points);
+                    return true;
+                }
+                break;
+        }
+
+        bounds = default;
+        return false;
+    }
+
+    private static ModelBounds TransformBounds(ModelBounds bounds, Affine transform)
+    {
+        var p1 = transform.Apply(bounds.MinX, bounds.MinY);
+        var p2 = transform.Apply(bounds.MinX, bounds.MaxY);
+        var p3 = transform.Apply(bounds.MaxX, bounds.MinY);
+        var p4 = transform.Apply(bounds.MaxX, bounds.MaxY);
+        return ModelBounds.FromPoints(new[] { p1, p2, p3, p4 });
+    }
+
+    private static Affine BuildInsertTransform(CadInsertObject insert, Cad3DPoint basePoint)
+    {
+        double scaleX = insert.ScaleX;
+        double scaleY = insert.ScaleY;
+        double angle = NormalizeAngle(insert.RotationAngle);
+        double cos = Math.Cos(angle);
+        double sin = Math.Sin(angle);
+
+        double m11 = scaleX * cos;
+        double m12 = -scaleY * sin;
+        double m21 = scaleX * sin;
+        double m22 = scaleY * cos;
+
+        double insertionX = insert.InsertionPoint?.X ?? 0;
+        double insertionY = insert.InsertionPoint?.Y ?? 0;
+        double dx = insertionX - (m11 * basePoint.X + m12 * basePoint.Y);
+        double dy = insertionY - (m21 * basePoint.X + m22 * basePoint.Y);
+        return new Affine(m11, m12, m21, m22, dx, dy);
+    }
+
+    private static double NormalizeAngle(double angle)
+    {
+        // Aspose exposes block rotation in radians, but a few third-party files
+        // store degrees. Treat values outside a full turn as degrees.
+        if (Math.Abs(angle) > Math.PI * 2)
+            return angle * Math.PI / 180.0;
+        return angle;
+    }
+
+    private static double Length(Cad3DPoint? point) =>
+        point == null ? 0 : Math.Sqrt(point.X * point.X + point.Y * point.Y);
+
+    private readonly record struct ModelBounds(double MinX, double MinY, double MaxX, double MaxY)
+    {
+        public bool IsValid =>
+            double.IsFinite(MinX) && double.IsFinite(MinY)
+            && double.IsFinite(MaxX) && double.IsFinite(MaxY)
+            && MaxX >= MinX && MaxY >= MinY;
+
+        public double Width => MaxX - MinX;
+        public double Height => MaxY - MinY;
+
+        public ModelBounds Union(ModelBounds other) => new(
+            Math.Min(MinX, other.MinX),
+            Math.Min(MinY, other.MinY),
+            Math.Max(MaxX, other.MaxX),
+            Math.Max(MaxY, other.MaxY));
+
+        public static ModelBounds FromPoints(params Cad3DPoint[] points) =>
+            FromPoints(points.Where(p => p != null).Select(p => (p.X, p.Y)));
+
+        public static ModelBounds FromPoints(IEnumerable<Cad3DPoint> points) =>
+            FromPoints(points.Where(p => p != null).Select(p => (p.X, p.Y)));
+
+        public static ModelBounds FromPoints(IEnumerable<(double X, double Y)> points)
+        {
+            bool any = false;
+            double minX = 0, minY = 0, maxX = 0, maxY = 0;
+
+            foreach (var (x, y) in points)
+            {
+                if (!double.IsFinite(x) || !double.IsFinite(y))
+                    continue;
+
+                if (!any)
+                {
+                    minX = maxX = x;
+                    minY = maxY = y;
+                    any = true;
+                }
+                else
+                {
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            return any ? new ModelBounds(minX, minY, maxX, maxY) : default;
+        }
+
+        public static ModelBounds FromCenterRadius(Cad3DPoint center, double radius)
+        {
+            radius = Math.Abs(radius);
+            return new ModelBounds(
+                center.X - radius,
+                center.Y - radius,
+                center.X + radius,
+                center.Y + radius);
+        }
+    }
+
+    private readonly record struct Affine(
+        double M11, double M12, double M21, double M22, double DX, double DY)
+    {
+        public static readonly Affine Identity = new(1, 0, 0, 1, 0, 0);
+
+        public (double X, double Y) Apply(double x, double y) =>
+            (M11 * x + M12 * y + DX, M21 * x + M22 * y + DY);
+
+        /// <summary>Applies this transform first, then <paramref name="parent"/>.</summary>
+        public Affine Then(Affine parent) => new(
+            parent.M11 * M11 + parent.M12 * M21,
+            parent.M11 * M12 + parent.M12 * M22,
+            parent.M21 * M11 + parent.M22 * M21,
+            parent.M21 * M12 + parent.M22 * M22,
+            parent.M11 * DX + parent.M12 * DY + parent.DX,
+            parent.M21 * DX + parent.M22 * DY + parent.DY);
     }
 }
