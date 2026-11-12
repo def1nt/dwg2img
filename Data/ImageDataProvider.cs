@@ -31,13 +31,13 @@ sealed class ImageDataProvider
         if (Connection.State != System.Data.ConnectionState.Closed) Connection.Close();
     }
 
-    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool useCache = true, bool cleanCache = false)
+    public byte[] GetImage(int art, int ver, bool stripDimensions = false, bool refresh = false, bool cleanCache = false)
     {
         byte[] bytes;
 
         var cache = (stripDimensions || cleanCache) ? _cleanCache : _defaultCache;
 
-        bool cached = useCache && cache.CheckCache(art, ver);
+        bool cached = !refresh && cache.CheckCache(art, ver);
         // bool cached = false; // Testing pre-processing
         if (cached)
         {
@@ -77,7 +77,7 @@ sealed class ImageDataProvider
                             bytes = ms.ToArray(); // Stream conversion
                         }
 
-                        if (useCache && bytes.Length > 0) cache.SaveToCache(bytes, (art, ver));
+                        if (bytes.Length > 0) cache.SaveToCache(bytes, (art, ver));
                         TimeOnly finish = TimeOnly.FromDateTime(DateTime.Now);
                         // Console.WriteLine($"Image {art}/{ver} generated in {finish - start}");
                     }
